@@ -12,14 +12,15 @@ Haciéndolo por módulo:
 - la fase 7 queda en "cierre de la migración": conciliar las cuentas
   restantes, ensayar el corte y hacer el arranque en paralelo.
 
-## Fase 0 · Diseño (este documento)
+## Fase 0 · Diseño ✅
 - Arquitectura, ERD, motor contable, análisis del Excel y plan.
-- **Salida:** tu aprobación y las respuestas a [05](05-decisiones-y-preguntas.md).
+- Decisiones de negocio registradas en [05](05-decisiones-y-preguntas.md) (08/10/2026).
 
 ## Fase 1 · Fundaciones + motor contable
 - Monorepo, Docker Compose, CI (lint, typecheck, unit, integración con Postgres, E2E).
-- Auth (login, 2FA, roles por empresa, RLS) y auditoría.
-- Empresas, segmentos, dimensiones (PV, almacenes, contenedores, proyectos).
+- Auth (login, 2FA, roles configurables por empresa y por recurso, RLS) y auditoría.
+- Empresas (DM, GR, KEI, KTR, KGT y SOC), segmentos jerárquicos (999 → 777, Proyectos),
+  dimensiones (PV, almacenes, contenedores).
 - **Plan de cuentas importado desde BC** (≈330 cuentas), con árbol editable en
   la UI y las anomalías detectadas marcadas para su corrección.
 - Monedas, tipos de tasa, **importación de la hoja `Tasas`** y pantalla de tasas.
@@ -40,8 +41,13 @@ Haciéndolo por módulo:
 - **ETL:** `Efectivo_Caja`, `Banco_Emp_Cuba`, `Banco_Emp_Exterior`,
   `Banco_Pers_Cuba`, `Banco_Pers_Exterior`, `Tenencia_Efectivo` y la bandeja de
   revisión.
-- **Aceptación:** las cuentas 101, 109–114, la parte de efectivo de 846/925 y
-  la parte de "Cambios" de 845/924 concilian con BC en abril–octubre de 2026.
+- **Saldos de apertura al 31/03/2026** para tesorería (asiento de apertura).
+- Entidad `SOC – Tesorería de socios` para las cuentas personales 112/113/114.
+- **Staging en el VPS de Hostinger** (`kgtaccounting.com`). Requiere que el
+  VPS esté contratado al empezar esta fase.
+- **Aceptación:** las cuentas 101 (excepto `101.0004` Caja CAD, omitida), 109–114,
+  la parte de efectivo de 846/925 y la parte de "Cambios" de 845/924 concilian
+  con BC consolidado en abril–octubre de 2026.
 
 ## Fase 3 · Contrapartes, proveedores y nómina
 - Contrapartes con roles, cuentas corrientes por moneda, partidas abiertas,

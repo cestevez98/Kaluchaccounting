@@ -103,21 +103,15 @@ lint (`eslint-plugin-boundaries`).
 - **Una sola base de datos.** Cada tabla de negocio lleva `company_id`. No usamos
   un esquema por empresa porque la consolidación y las operaciones
   intercompañía cruzan empresas constantemente.
-- **Roles** (Admin, Contador, Operaciones, Ventas, Solo lectura) asignados
-  **por empresa** en `user_company_role`. Un usuario puede ser Contador en KEI
-  y Solo lectura en DM.
-- **Matriz de permisos inicial:**
-
-| Acción | Admin | Contador | Operaciones | Ventas | Solo lectura |
-|---|:-:|:-:|:-:|:-:|:-:|
-| Configuración, usuarios, plan de cuentas | ✔ | plan de cuentas | – | – | – |
-| Asientos manuales, cierres, revaluación | ✔ | ✔ | – | – | – |
-| Caja, bancos, traspasos, conciliación | ✔ | ✔ | ✔ | – | – |
-| Contenedores, inventario, costos | ✔ | ✔ | ✔ | consulta | – |
-| Facturación, cobros, comisiones propias | ✔ | ✔ | ✔ | ✔ (solo propias) | – |
-| Reportes financieros | ✔ | ✔ | parcial | – | ✔ |
-| Anular (contra-asiento) | ✔ | ✔ | – | – | – |
-
+- **Roles configurables**: conjuntos editables de permisos atómicos
+  (`recurso:acción`), asignados **por empresa** en `user_company_role`. Un
+  usuario puede ser Cajero en DM y Solo lectura en KEI. Roles semilla:
+  Superadministrador, Contador, Cajero, Conciliador, Fiscal, Comercial y
+  Ventas, Almacén y Solo lectura. La matriz completa está en
+  [05 §2](05-decisiones-y-preguntas.md).
+- **Acceso por recurso**: un cajero solo ve sus cajas y un vendedor solo sus
+  ventas y comisiones.
+- **Vista por defecto: Grupo consolidado.** La empresa es un filtro.
 - **Auditoría:** un trigger genérico guarda en `audit_log` el antes y el después
   (JSONB) de cada `INSERT`/`UPDATE` con el usuario de la sesión (`SET LOCAL
   app.user_id`). Los asientos contabilizados son inmutables: un trigger rechaza
@@ -163,8 +157,10 @@ lint (`eslint-plugin-boundaries`).
 
 ## 6. Despliegue
 
-- **Producción:** VPS con Docker Compose (o Kubernetes ligero si crece), con
-  Postgres gestionado o propio. Backups con **pgBackRest**: un completo semanal,
+- **Producción:** **VPS de Hostinger** (KVM 2, centro de datos en la UE) con
+  Docker Compose y Caddy (HTTPS) en **`kgtaccounting.com`**. El hosting web
+  compartido no sirve porque no tiene PostgreSQL. Detalle en
+  [05 §1](05-decisiones-y-preguntas.md). Backups con **pgBackRest**: un completo semanal,
   incrementales diarios y WAL continuo para restaurar a un punto en el tiempo,
   todo replicado y cifrado fuera del servidor (S3-compatible). La
   restauración se prueba de forma automática una vez al mes.
@@ -173,5 +169,4 @@ lint (`eslint-plugin-boundaries`).
 - **Conectividad:** parte del equipo trabaja desde Cuba. La UI se diseña para
   enlaces lentos: paginación en servidor, respuestas comprimidas, sin
   dependencias de CDN bloqueadas en Cuba y formularios que conservan el borrador
-  en local si se corta la conexión. Hay una pregunta abierta sobre hosting en
-  [05](05-decisiones-y-preguntas.md).
+  en local si se corta la conexión.

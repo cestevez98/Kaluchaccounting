@@ -70,7 +70,7 @@ noviembre–diciembre cuando haya datos.
 | # | Dónde | Problema | Propuesta |
 |---|---|---|---|
 | 1 | ER (682 celdas), ERD 999 (2) (837), ERE 888 (2) (326), EFE (40) | `#REF!`: la columna que filtraba `Distribución_Facturación[Referencia cruzada]/[Clasificación]` y unas celdas de año/mes de ES fueron borradas | Se resuelve por diseño: los reportes salen del libro mayor |
-| 2 | BC fila 7 (`101.0004` Caja CAD) y caja en `Efectivo_Caja[Mov USD]` | El CAD se convierte con la tasa **`MLC/USD (IC)`**, no con `CAD/USD (OUE)` | **Confirmar** si es intencional |
+| 2 | BC fila 7 (`101.0004` Caja CAD) y caja en `Efectivo_Caja[Mov USD]` | El CAD se convierte con la tasa **`MLC/USD (IC)`**, no con `CAD/USD (OUE)` | **Confirmado como error**: la caja CAD se omite (no se migra ni se concilia) |
 | 3 | Efectivo_Caja (665), Deuda_Tienda (37), Deuda_César_EUR (11)… | `#DIV/0!` por tasa 0 o ausente en `Tasas` | Validación: no se puede contabilizar sin tasa > 0; bandeja de "tasas faltantes" |
 | 4 | Tasas | Filas futuras con 0 y, para algunos pares, días sin dato | Búsqueda de la última tasa anterior con antigüedad máxima configurable |
 | 5 | BC | Subcuentas duplicadas: `110.3803` (BBVA EUR y Bankinter EUR), `180.8883`, `1816.8880` | **Corregir** códigos antes de migrar |

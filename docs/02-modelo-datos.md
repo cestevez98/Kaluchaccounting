@@ -43,6 +43,7 @@ erDiagram
   }
   segment {
     uuid id PK
+    uuid parent_id FK "777 y PRJ-* cuelgan de 999"
     string code "777 | 888 | 999 | PRJ-*"
     string name
   }
@@ -507,6 +508,9 @@ erDiagram
   import_batch ||--|{ import_row : filas
   import_row ||--o| review_item : "si no clasifica"
   app_user ||--o{ user_company_role : tiene
+  role ||--o{ user_company_role : asignado
+  role ||--|{ role_permission : incluye
+  app_user ||--o{ user_resource_scope : "acotado a"
   audit_log }o--|| app_user : autor
   parameter ||--o{ parameter_version : vigencias
 
@@ -588,10 +592,24 @@ erDiagram
     string reason
     uuid resolved_by FK
   }
+  role {
+    uuid id PK
+    string name "Superadministrador, Cajero, Conciliador, Fiscal…"
+    bool system "roles semilla no borrables"
+  }
+  role_permission {
+    uuid role_id FK
+    string permission "cash:post, bank:reconcile, period:lock…"
+  }
   user_company_role {
     uuid user_id FK
     uuid company_id FK
-    string role "ADMIN CONTADOR OPERACIONES VENTAS LECTURA"
+    uuid role_id FK
+  }
+  user_resource_scope {
+    uuid user_id FK
+    string resource_type "TREASURY_ACCOUNT | SELLER | WAREHOUSE"
+    uuid resource_id
   }
   audit_log {
     bigint id PK
