@@ -1,0 +1,26 @@
+# Imagen de la API (incluye migraciones y CLI del ETL compilado).
+# Construir desde la raíz del repositorio:  docker build -f docker/Dockerfile.api -t kaluch-api .
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
+ENV CI=true
+WORKDIR /app
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+RUN pnpm install --frozen-lockfile --filter @kaluch/api... --filter @kaluch/etl...
+RUN pnpm --filter @kaluch/shared build && pnpm --filter @kaluch/db build && pnpm --filter @kaluch/etl build && pnpm --filter @kaluch/api build
+# Solo dependencias de producción en la imagen final.
+RUN pnpm install --frozen-lockfile --prod --filter @kaluch/api... --filter @kaluch/etl... && pnpm --filter @kaluch/db exec prisma generate
+
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates tini && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /app /app
+RUN useradd --system --uid 1001 kaluch && chown -R kaluch /app
+USER kaluch
+EXPOSE 4000
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Aplica migraciones pendientes y arranca la API.
+CMD ["sh", "-c", "cd packages/db && node node_modules/prisma/build/index.js migrate deploy && cd /app && node apps/api/dist/main.js"]

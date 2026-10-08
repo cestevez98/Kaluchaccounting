@@ -1,0 +1,83 @@
+# Producción en el VPS (Hostinger KVM 2, Ubuntu 24.04 + Docker).
+# Uso (desde la raíz del repo, con docker/.env.prod creado a partir de docker/env.prod.example):
+#   docker compose -f docker/compose.prod.yml --env-file docker/.env.prod up -d --build
+name: kaluch
+
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      retries: 10
+    # Sin puertos publicados: solo accesible desde la red interna de Docker.
+
+  api:
+    build: { context: .., dockerfile: docker/Dockerfile.api }
+    image: kaluch-api
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      API_PORT: '4000'
+      WEB_ORIGIN: https://${DOMAIN}
+      AUTH_ENFORCE_2FA: ${AUTH_ENFORCE_2FA:-true}
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      retries: 5
+
+  web:
+    build: { context: .., dockerfile: docker/Dockerfile.web }
+    image: kaluch-web
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      API_INTERNAL_URL: http://api:4000
+
+  caddy:
+    image: public.ecr.aws/docker/library/caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports: ['80:80', '443:443', '443:443/udp']
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Copia diaria con pg_dump (formato custom, comprimido). Retención: BACKUP_KEEP_DAYS.
+  # Las copias quedan en el volumen "backups"; sincronízalas fuera del servidor (ver docs/despliegue.md).
+  backup:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    volumes:
+      - backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ['sh', '/backup.sh']
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+  backups:

@@ -30,9 +30,11 @@ model Company {
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
-  periods   FiscalPeriod[]
-  entries   JournalEntry[]
-  userRoles UserCompanyRole[]
+  periods          FiscalPeriod[]
+  entries          JournalEntry[]
+  userRoles        UserCompanyRole[]
+  treasuryAccounts TreasuryAccount[]
+  documents        Document[]
 
   @@map("company")
 }
@@ -152,8 +154,10 @@ model Account {
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  lines    JournalLine[]
-  mappings AccountMapping[]
+  lines            JournalLine[]
+  mappings         AccountMapping[]
+  treasuryAccounts TreasuryAccount[]
+  categories       CashCategory[]
 
   @@index([parentId])
   @@index([code])
@@ -162,14 +166,14 @@ model Account {
 
 /// Resolución de cuentas para reglas de contabilización (de lo específico a lo general).
 model AccountMapping {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  key        String
-  companyId  String?  @map("company_id") @db.Uuid
-  segmentId  String?  @map("segment_id") @db.Uuid
-  currency   String?  @db.VarChar(3)
-  accountId  String   @map("account_id") @db.Uuid
-  account    Account  @relation(fields: [accountId], references: [id])
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id        String   @id @default(uuid(7)) @db.Uuid
+  key       String
+  companyId String?  @map("company_id") @db.Uuid
+  segmentId String?  @map("segment_id") @db.Uuid
+  currency  String?  @db.VarChar(3)
+  accountId String   @map("account_id") @db.Uuid
+  account   Account  @relation(fields: [accountId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([key])
   @@map("account_mapping")
@@ -219,23 +223,23 @@ enum EntryStatus {
 }
 
 model JournalEntry {
-  id         String       @id @default(uuid(7)) @db.Uuid
-  companyId  String       @map("company_id") @db.Uuid
-  company    Company      @relation(fields: [companyId], references: [id])
-  periodId   String       @map("period_id") @db.Uuid
-  period     FiscalPeriod @relation(fields: [periodId], references: [id])
+  id         String        @id @default(uuid(7)) @db.Uuid
+  companyId  String        @map("company_id") @db.Uuid
+  company    Company       @relation(fields: [companyId], references: [id])
+  periodId   String        @map("period_id") @db.Uuid
+  period     FiscalPeriod  @relation(fields: [periodId], references: [id])
   number     String
-  entryDate  DateTime     @map("entry_date") @db.Date
-  book       Book         @default(BASE)
+  entryDate  DateTime      @map("entry_date") @db.Date
+  book       Book          @default(BASE)
   kind       EntryKind
-  documentId String?      @map("document_id") @db.Uuid
-  reversesId String?      @unique @map("reverses_id") @db.Uuid
+  documentId String?       @map("document_id") @db.Uuid
+  reversesId String?       @unique @map("reverses_id") @db.Uuid
   reverses   JournalEntry? @relation("Reversal", fields: [reversesId], references: [id])
   reversedBy JournalEntry? @relation("Reversal")
-  status     EntryStatus  @default(POSTED)
+  status     EntryStatus   @default(POSTED)
   memo       String
-  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  createdBy  String?      @map("created_by") @db.Uuid
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  createdBy  String?       @map("created_by") @db.Uuid
 
   lines JournalLine[]
 
@@ -281,17 +285,17 @@ model JournalLine {
 /// Saldos materializados por periodo. Mantenidos por trigger al insertar líneas.
 /// segment_key = segment_id o '00000000-…' si no hay segmento (para la PK).
 model LedgerBalance {
-  companyId   String  @map("company_id") @db.Uuid
-  book        Book
-  periodId    String  @map("period_id") @db.Uuid
-  year        Int
-  month       Int
-  accountId   String  @map("account_id") @db.Uuid
-  segmentKey  String  @map("segment_key") @db.Uuid
-  currency    String  @db.VarChar(3)
-  debitUsd    Decimal @default(0) @map("debit_usd") @db.Decimal(18, 4)
-  creditUsd   Decimal @default(0) @map("credit_usd") @db.Decimal(18, 4)
-  amountOrig  Decimal @default(0) @map("amount_orig") @db.Decimal(18, 4)
+  companyId  String  @map("company_id") @db.Uuid
+  book       Book
+  periodId   String  @map("period_id") @db.Uuid
+  year       Int
+  month      Int
+  accountId  String  @map("account_id") @db.Uuid
+  segmentKey String  @map("segment_key") @db.Uuid
+  currency   String  @db.VarChar(3)
+  debitUsd   Decimal @default(0) @map("debit_usd") @db.Decimal(18, 4)
+  creditUsd  Decimal @default(0) @map("credit_usd") @db.Decimal(18, 4)
+  amountOrig Decimal @default(0) @map("amount_orig") @db.Decimal(18, 4)
 
   @@id([companyId, book, periodId, accountId, segmentKey, currency])
   @@index([year, month])
@@ -332,16 +336,16 @@ model ParameterVersion {
 // ───────────────────────── Seguridad y auditoría ─────────────────────────
 
 model AppUser {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  email        String   @unique
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @unique
   name         String
-  passwordHash String   @map("password_hash")
-  totpSecret   String?  @map("totp_secret")
-  totpEnabled  Boolean  @default(false) @map("totp_enabled")
-  active       Boolean  @default(true)
+  passwordHash String    @map("password_hash")
+  totpSecret   String?   @map("totp_secret")
+  totpEnabled  Boolean   @default(false) @map("totp_enabled")
+  active       Boolean   @default(true)
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   companyRoles UserCompanyRole[]
 
@@ -349,11 +353,11 @@ model AppUser {
 }
 
 model Role {
-  id          String           @id @default(uuid(7)) @db.Uuid
-  name        String           @unique
-  description String           @default("")
-  system      Boolean          @default(false)
-  requires2fa Boolean          @default(false) @map("requires_2fa")
+  id          String            @id @default(uuid(7)) @db.Uuid
+  name        String            @unique
+  description String            @default("")
+  system      Boolean           @default(false)
+  requires2fa Boolean           @default(false) @map("requires_2fa")
   permissions RolePermission[]
   assignments UserCompanyRole[]
 
@@ -400,15 +404,15 @@ model AuditLog {
 
 /// Valores del BC del Excel por cuenta y mes, para la conciliación de aceptación.
 model BcReference {
-  id         String   @id @default(uuid(7)) @db.Uuid
-  importId   String   @map("import_id") @db.Uuid
-  fullCode   String   @map("full_code")
-  excelRow   Int      @map("excel_row")
-  label      String
-  year       Int
-  month      Int
-  valueUsd   Decimal  @map("value_usd") @db.Decimal(18, 4)
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id        String   @id @default(uuid(7)) @db.Uuid
+  importId  String   @map("import_id") @db.Uuid
+  fullCode  String   @map("full_code")
+  excelRow  Int      @map("excel_row")
+  label     String
+  year      Int
+  month     Int
+  valueUsd  Decimal  @map("value_usd") @db.Decimal(18, 4)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@unique([importId, excelRow, year, month])
   @@map("bc_reference")
@@ -423,4 +427,276 @@ model ImportBatch {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("import_batch")
+}
+
+// ───────────────────────── Documentos (fase 2) ─────────────────────────
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+/// Supertipo de todo documento fuente. Cada módulo guarda su detalle en una tabla 1:1.
+model Document {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  companyId   String         @map("company_id") @db.Uuid
+  company     Company        @relation(fields: [companyId], references: [id])
+  docType     String         @map("doc_type")
+  number      String
+  docDate     DateTime       @map("doc_date") @db.Date
+  status      DocumentStatus @default(POSTED)
+  memo        String
+  /// Fila del Excel de la que procede (trazabilidad de la migración).
+  importRowId String?        @unique @map("import_row_id") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  createdBy   String?        @map("created_by") @db.Uuid
+
+  treasuryMovement TreasuryMovement?
+
+  @@unique([companyId, number])
+  @@index([companyId, docDate])
+  @@map("document")
+}
+
+// ───────────────────────── Tesorería ─────────────────────────
+
+enum TreasuryKind {
+  CASH
+  BANK
+  WALLET
+}
+
+enum OwnerType {
+  COMPANY
+  PARTNER
+}
+
+/// Caja, cuenta bancaria o monedero (Tropipay, Stripe, Zelle). Una cuenta contable de detalle por cuenta de tesorería.
+model TreasuryAccount {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  companyId    String       @map("company_id") @db.Uuid
+  company      Company      @relation(fields: [companyId], references: [id])
+  glAccountId  String       @unique @map("gl_account_id") @db.Uuid
+  glAccount    Account      @relation(fields: [glAccountId], references: [id])
+  kind         TreasuryKind
+  ownerType    OwnerType    @default(COMPANY) @map("owner_type")
+  ownerName    String?      @map("owner_name")
+  country      String?
+  bank         String?
+  /// Últimos 4 dígitos (= subcuenta). El número completo no se guarda en claro.
+  last4        String?
+  currency     String       @db.VarChar(3)
+  name         String
+  /// Origen en el Excel: hoja y criterios de la fórmula del BC (para la migración).
+  sourceSheet  String?      @map("source_sheet")
+  sourceFilter Json?        @map("source_filter")
+  /// Cuenta creada en la migración para movimientos que el BC no asignaba a ninguna subcuenta.
+  createdByEtl Boolean      @default(false) @map("created_by_etl")
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  legs       TreasuryLeg[]
+  statements BankStatement[]
+
+  @@index([companyId])
+  @@map("treasury_account")
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+  EXCHANGE
+  TRANSFER
+  DEBT
+  OTHER
+}
+
+/// Clasificación de movimientos (sustituye a "Referencia cruzada").
+model CashCategory {
+  id               String       @id @default(uuid(7)) @db.Uuid
+  code             String       @unique
+  name             String
+  kind             CategoryKind
+  /// Cuenta contrapartida por defecto (null = va a la bandeja de revisión).
+  accountId        String?      @map("account_id") @db.Uuid
+  account          Account?     @relation(fields: [accountId], references: [id])
+  segmentId        String?      @map("segment_id") @db.Uuid
+  cashFlowCategory String       @default("OPER") @map("cash_flow_category")
+  /// Variantes de texto del Excel que se normalizan a esta categoría.
+  aliases          String[]     @default([])
+  active           Boolean      @default(true)
+
+  movements TreasuryMovement[]
+
+  @@map("cash_category")
+}
+
+enum MovementKind {
+  MOVEMENT
+  EXCHANGE
+  TRANSFER
+  OPENING
+}
+
+/// Movimiento de tesorería: una o varias patas en cuentas de tesorería + contrapartida.
+model TreasuryMovement {
+  id               String        @id @db.Uuid
+  document         Document      @relation(fields: [id], references: [id])
+  kind             MovementKind
+  categoryId       String?       @map("category_id") @db.Uuid
+  category         CashCategory? @relation(fields: [categoryId], references: [id])
+  counterAccountId String?       @map("counter_account_id") @db.Uuid
+  segmentId        String?       @map("segment_id") @db.Uuid
+  posId            String?       @map("pos_id") @db.Uuid
+  description      String
+  /// Texto original de "Referencia cruzada" / clasificación del Excel.
+  sourceReference  String?       @map("source_reference")
+  needsReview      Boolean       @default(false) @map("needs_review")
+  reviewNote       String?       @map("review_note")
+  resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz
+  resolvedBy       String?       @map("resolved_by") @db.Uuid
+  entryId          String?       @map("entry_id") @db.Uuid
+
+  legs TreasuryLeg[]
+
+  @@index([needsReview])
+  @@map("treasury_movement")
+}
+
+model TreasuryLeg {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  movementId        String           @map("movement_id") @db.Uuid
+  movement          TreasuryMovement @relation(fields: [movementId], references: [id])
+  treasuryAccountId String           @map("treasury_account_id") @db.Uuid
+  treasuryAccount   TreasuryAccount  @relation(fields: [treasuryAccountId], references: [id])
+  /// Importe con signo en la moneda de la cuenta: + entrada / − salida.
+  amount            Decimal          @db.Decimal(18, 4)
+  currency          String           @db.VarChar(3)
+  rate              Decimal          @db.Decimal(20, 10)
+  amountUsd         Decimal          @map("amount_usd") @db.Decimal(18, 4)
+  valueDate         DateTime         @map("value_date") @db.Date
+
+  statementLine BankStatementLine?
+
+  @@index([treasuryAccountId, valueDate])
+  @@map("treasury_leg")
+}
+
+// ───────────────────────── Extractos y conciliación bancaria ─────────────────────────
+
+model BankStatement {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  treasuryAccountId String          @map("treasury_account_id") @db.Uuid
+  treasuryAccount   TreasuryAccount @relation(fields: [treasuryAccountId], references: [id])
+  fileName          String          @map("file_name")
+  fileHash          String          @map("file_hash")
+  dateFrom          DateTime?       @map("date_from") @db.Date
+  dateTo            DateTime?       @map("date_to") @db.Date
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  createdBy         String?         @map("created_by") @db.Uuid
+
+  lines BankStatementLine[]
+
+  @@map("bank_statement")
+}
+
+enum StatementLineStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+model BankStatementLine {
+  id                String              @id @default(uuid(7)) @db.Uuid
+  statementId       String              @map("statement_id") @db.Uuid
+  statement         BankStatement       @relation(fields: [statementId], references: [id])
+  treasuryAccountId String              @map("treasury_account_id") @db.Uuid
+  valueDate         DateTime            @map("value_date") @db.Date
+  description       String
+  /// + abono / − cargo, en la moneda de la cuenta.
+  amount            Decimal             @db.Decimal(18, 4)
+  /// Huella para no importar dos veces la misma línea.
+  lineHash          String              @map("line_hash")
+  status            StatementLineStatus @default(UNMATCHED)
+  legId             String?             @unique @map("leg_id") @db.Uuid
+  leg               TreasuryLeg?        @relation(fields: [legId], references: [id])
+
+  @@unique([treasuryAccountId, lineHash])
+  @@index([treasuryAccountId, status])
+  @@map("bank_statement_line")
+}
+
+// ───────────────────────── Revaluación (tenencia) ─────────────────────────
+
+model FxRevaluationRun {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  year      Int
+  month     Int
+  entryId   String?  @map("entry_id") @db.Uuid
+  /// Corridas anteriores del mismo mes quedan anuladas (superseded).
+  status    String   @default("POSTED")
+  totalUsd  Decimal  @default(0) @map("total_usd") @db.Decimal(18, 4)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy String?  @map("created_by") @db.Uuid
+
+  lines FxRevaluationLine[]
+
+  @@index([companyId, year, month])
+  @@map("fx_revaluation_run")
+}
+
+model FxRevaluationLine {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  runId       String           @map("run_id") @db.Uuid
+  run         FxRevaluationRun @relation(fields: [runId], references: [id])
+  accountId   String           @map("account_id") @db.Uuid
+  currency    String           @db.VarChar(3)
+  rateType    String           @map("rate_type")
+  balanceOrig Decimal          @map("balance_orig") @db.Decimal(18, 4)
+  bookedUsd   Decimal          @map("booked_usd") @db.Decimal(18, 4)
+  closingRate Decimal          @map("closing_rate") @db.Decimal(20, 10)
+  revaluedUsd Decimal          @map("revalued_usd") @db.Decimal(18, 4)
+  diffUsd     Decimal          @map("diff_usd") @db.Decimal(18, 4)
+
+  @@map("fx_revaluation_line")
+}
+
+// ───────────────────────── Migración: filas y conciliación ─────────────────────────
+
+enum ImportRowStatus {
+  OK
+  REVIEW
+  SKIPPED
+  ERROR
+}
+
+model ImportRow {
+  id       String          @id @default(uuid(7)) @db.Uuid
+  batchId  String          @map("batch_id") @db.Uuid
+  sheet    String
+  excelRow Int             @map("excel_row")
+  raw      Json
+  status   ImportRowStatus
+  message  String?
+
+  @@unique([sheet, excelRow, batchId])
+  @@index([status])
+  @@map("import_row")
+}
+
+/// Diferencias con el BC del Excel aceptadas con su explicación (requieren visto bueno).
+model BcExplanation {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  fullCode  String   @map("full_code")
+  /// null = aplica a todos los meses.
+  year      Int?
+  month     Int?
+  reason    String
+  approved  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([fullCode])
+  @@map("bc_explanation")
 }

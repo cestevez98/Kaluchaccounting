@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Permission } from '@kaluch/shared';
@@ -8,6 +8,12 @@ import { assertCan, type AuthUser } from './access';
 import { IS_PUBLIC, REQUIRED_PERMISSION } from './decorators';
 
 export const SESSION_COOKIE = 'kaluch_session';
+
+/** En producción se exige 2FA a los roles que lo requieren; configurable con AUTH_ENFORCE_2FA=true|false. */
+export function enforce2fa(): boolean {
+  const v = process.env.AUTH_ENFORCE_2FA;
+  return v ? v === 'true' : process.env.NODE_ENV === 'production';
+}
 
 /** Autenticación (cookie httpOnly o Bearer) + permiso mínimo declarado en la ruta. */
 @Injectable()
@@ -46,6 +52,14 @@ export class AuthGuard implements CanActivate {
       permissions.set(cr.companyId, set);
     }
     req.user = { id: user.id, email: user.email, name: user.name, totpEnabled: user.totpEnabled, permissions };
+
+    // 2FA obligatorio para los roles que lo exigen: solo se permiten las rutas de /auth hasta activarlo.
+    if (enforce2fa() && !user.totpEnabled && user.companyRoles.some((cr) => cr.role.requires2fa)) {
+      const path = (req.originalUrl ?? req.url ?? '').split('?')[0] ?? '';
+      if (!/\/auth\//.test(path)) {
+        throw new ForbiddenException({ code: 'TOTP_REQUIRED', message: 'Tu rol exige verificación en dos pasos: actívala en Seguridad para continuar' });
+      }
+    }
 
     const required = this.reflector.getAllAndOverride<Permission>(REQUIRED_PERMISSION, targets);
     if (required) assertCan(req.user, required);

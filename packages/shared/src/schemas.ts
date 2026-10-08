@@ -94,3 +94,87 @@ export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(500).default(50),
 });
+
+// ───────────────────────── Tesorería (fase 2) ─────────────────────────
+
+export const treasuryMovementInputSchema = z.object({
+  companyId: uuid,
+  date: isoDate,
+  kind: z.enum(['MOVEMENT', 'EXCHANGE', 'TRANSFER']).default('MOVEMENT'),
+  description: z.string().min(1, 'El concepto es obligatorio').max(480),
+  categoryId: uuid.nullable().optional(),
+  counterAccountId: uuid.nullable().optional(),
+  segmentId: uuid.nullable().optional(),
+  posId: uuid.nullable().optional(),
+  legs: z
+    .array(
+      z.object({
+        treasuryAccountId: uuid,
+        /** + entrada / − salida */
+        amount: decimalString.refine((v) => Number(v) !== 0, 'El importe no puede ser 0'),
+        rate: positiveDecimal.optional(),
+      }),
+    )
+    .min(1, 'Indica al menos una cuenta de tesorería')
+    .max(10),
+});
+export type TreasuryMovementApiInput = z.infer<typeof treasuryMovementInputSchema>;
+
+export const treasuryAccountInputSchema = z.object({
+  companyId: uuid,
+  /** Cuenta contable de detalle existente, o se crea la subcuenta indicada bajo el grupo. */
+  glAccountId: uuid.optional(),
+  groupCode: z.string().regex(/^\d{3}$/).optional(),
+  subcode: z.string().regex(/^\d{1,6}$/).optional(),
+  kind: z.enum(['CASH', 'BANK', 'WALLET']),
+  name: z.string().min(1).max(200),
+  currency: currencySchema,
+  bank: z.string().max(100).nullable().optional(),
+  ownerType: z.enum(['COMPANY', 'PARTNER']).default('COMPANY'),
+  ownerName: z.string().max(200).nullable().optional(),
+  country: z.string().max(60).nullable().optional(),
+});
+
+export const categoryInputSchema = z.object({
+  code: z.string().regex(/^[A-Z0-9_]{2,60}$/, 'Código en mayúsculas, números y _'),
+  name: z.string().min(1).max(200),
+  kind: z.enum(['INCOME', 'EXPENSE', 'EXCHANGE', 'TRANSFER', 'DEBT', 'OTHER']),
+  accountId: uuid.nullable().optional(),
+  segmentId: uuid.nullable().optional(),
+  cashFlowCategory: z.enum(['OPER', 'INV', 'FIN']).default('OPER'),
+  active: z.boolean().default(true),
+});
+
+export const reclassifyInputSchema = z.object({
+  accountId: uuid,
+  categoryId: uuid.nullable().optional(),
+  note: z.string().max(500).optional(),
+});
+
+export const revaluationInputSchema = z.object({
+  year: z.number().int().min(2020).max(2100),
+  month: z.number().int().min(1).max(12),
+  companyId: uuid.optional(),
+});
+
+export const userCreateSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(200),
+  password: z.string().min(12, 'La contraseña debe tener al menos 12 caracteres'),
+  assignments: z.array(z.object({ companyId: uuid, roleId: uuid })).default([]),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  active: z.boolean().optional(),
+  password: z.string().min(12, 'La contraseña debe tener al menos 12 caracteres').optional(),
+  resetTotp: z.boolean().optional(),
+  assignments: z.array(z.object({ companyId: uuid, roleId: uuid })).optional(),
+});
+
+export const roleInputSchema = z.object({
+  name: z.string().min(2).max(100),
+  description: z.string().max(300).default(''),
+  requires2fa: z.boolean().default(false),
+  permissions: z.array(z.string()).min(1),
+});

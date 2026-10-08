@@ -4,7 +4,9 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { withTx } from '../client';
-import { postEntry, ROUNDING_MAPPING_KEY } from '../ledger';
+import { postEntry } from '../ledger';
+import { ensureSystemAccounts } from '../system-accounts';
+import { seedDemoTreasury } from './treasury-demo';
 import { upsertAccounts } from './accounts';
 import { DEMO_ACCOUNTS } from './accounts-demo';
 import { seedCatalogs, seedPeriods } from './catalogs';
@@ -33,10 +35,8 @@ export async function seedDemo(prisma: PrismaClient, opts: { entries?: boolean }
       sortOrder: i,
     })),
   );
-  const rounding = await prisma.account.findUniqueOrThrow({ where: { fullCode: '699.9999' } });
-  if (!(await prisma.accountMapping.findFirst({ where: { key: ROUNDING_MAPPING_KEY } }))) {
-    await prisma.accountMapping.create({ data: { key: ROUNDING_MAPPING_KEY, accountId: rounding.id } });
-  }
+  await ensureSystemAccounts(prisma);
+  await seedDemoTreasury(prisma);
 
   // Tasas 01/01/2026 – 31/10/2026.
   const series: [string, string, string, number, number][] = [

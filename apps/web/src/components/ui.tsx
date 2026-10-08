@@ -5,10 +5,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
-        {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
+        <h1 className="text-lg font-bold text-ink">{title}</h1>
+        {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -21,7 +21,7 @@ export function Amount({ value, decimals = 2, muted }: { value: string | number 
   const negative = Number(value) < 0;
   const zero = Number(value) === 0;
   return (
-    <span className={`num ${negative ? 'text-red-700' : zero || muted ? 'text-gray-400' : ''}`}>{formatNumber(String(value), decimals)}</span>
+    <span className={`num ${negative ? 'text-bad' : zero || muted ? 'text-subtle' : ''}`}>{formatNumber(String(value), decimals)}</span>
   );
 }
 
@@ -31,13 +31,13 @@ export function DateText({ value }: { value: string | Date | null | undefined })
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'warning' | 'success' | 'info'; children: ReactNode }) {
   const cls = {
-    error: 'border-red-200 bg-red-50 text-red-800',
-    warning: 'border-amber-200 bg-amber-50 text-amber-900',
-    success: 'border-green-200 bg-green-50 text-green-800',
-    info: 'border-brand-100 bg-brand-50 text-brand-900',
+    error: 'border-bad/20 bg-bad-bg text-bad',
+    warning: 'border-warn/20 bg-warn-bg text-[#8a5f00]',
+    success: 'border-ok/20 bg-ok-bg text-ok',
+    info: 'border-brand-100 bg-brand-50 text-brand-600',
   }[kind];
   return (
-    <div role={kind === 'error' ? 'alert' : 'status'} className={`rounded-md border px-3 py-2 text-sm ${cls}`}>
+    <div role={kind === 'error' ? 'alert' : 'status'} className={`rounded-md border px-3 py-2 text-[13px] ${cls}`}>
       {children}
     </div>
   );
@@ -45,19 +45,19 @@ export function Alert({ kind = 'error', children }: { kind?: 'error' | 'warning'
 
 export function Badge({ children, tone = 'gray' }: { children: ReactNode; tone?: 'gray' | 'green' | 'amber' | 'red' | 'blue' }) {
   const cls = {
-    gray: 'bg-gray-100 text-gray-700',
-    green: 'bg-green-100 text-green-800',
-    amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
-    blue: 'bg-brand-100 text-brand-700',
+    gray: 'bg-gray-100 text-muted',
+    green: 'bg-ok-bg text-ok',
+    amber: 'bg-warn-bg text-warn',
+    red: 'bg-bad-bg text-bad',
+    blue: 'bg-brand-100 text-brand-600',
   }[tone];
-  return <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${cls}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${cls}`}>{children}</span>;
 }
 
 export function Pagination({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-gray-600">
+    <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2 text-xs text-muted">
       <span>
         {total === 0 ? 'Sin resultados' : `${formatNumber((page - 1) * pageSize + 1, 0)}–${formatNumber(Math.min(page * pageSize, total), 0)} de ${formatNumber(total, 0)}`}
       </span>
@@ -111,7 +111,7 @@ export function DateInput({ value, onChange, id, required }: { value: string; on
 }
 
 export function Spinner() {
-  return <div className="py-8 text-center text-sm text-gray-500">Cargando…</div>;
+  return <div className="py-8 text-center text-xs text-muted">Cargando…</div>;
 }
 
 export function today(): string {

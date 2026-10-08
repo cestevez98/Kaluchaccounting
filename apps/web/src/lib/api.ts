@@ -26,6 +26,9 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
     throw new ApiError(401, 'UNAUTHENTICATED', 'Sesión caducada');
   }
   const body = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+  if (res.status === 403 && body?.code === 'TOTP_REQUIRED' && typeof window !== 'undefined' && window.location.pathname !== '/seguridad') {
+    window.location.href = '/seguridad';
+  }
   if (!res.ok) {
     throw new ApiError(res.status, body?.code ?? 'ERROR', body?.message ?? `Error ${res.status}`, body?.issues);
   }

@@ -5,9 +5,10 @@ ERP financiero-operativo para Grupo Kaluch. Sustituye el libro Excel
 basada en un libro diario de partida doble, multi-empresa, multi-moneda y
 multi-segmento.
 
-**Estado:** Fase 1 completada (08/10/2026): motor contable, tasas, plan de cuentas,
-balance de comprobación e importación inicial del Excel. Resumen en
-[docs/fases/fase-1.md](docs/fases/fase-1.md). Siguiente: fase 2 (tesorería).
+**Estado:** Fase 2 completada (08/10/2026): tesorería (caja, bancos, cambios, traspasos,
+extractos, revaluación), conciliación con el BC del Excel, usuarios y roles, 2FA obligatorio y
+despliegue con Docker. Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) ·
+[despliegue](docs/despliegue.md). Siguiente: fase 3 (contrapartes, proveedores y nómina).
 
 ## Puesta en marcha (desarrollo)
 
@@ -26,7 +27,9 @@ Usuario demo: `admin@kaluch.local` / `Kaluch-demo-2026`.
 Importar datos reales del Excel (nunca se sube al repositorio; `data/` está en `.gitignore`):
 
 ```bash
-pnpm etl all data/balance.xlsx   # plan de cuentas + tasas + valores de referencia del BC
+pnpm etl all data/balance.xlsx        # plan de cuentas + tasas + valores de referencia del BC
+pnpm etl treasury data/balance.xlsx   # caja y bancos: apertura, movimientos y revaluaciones
+pnpm etl compare data/conciliacion.xlsx  # informe de conciliación con el BC
 ```
 
 Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (Playwright).
@@ -52,3 +55,5 @@ Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (
 | [04 · Plan de fases](docs/04-plan-de-fases.md) | Alcance, entregables y criterios de aceptación por fase |
 | [05 · Decisiones](docs/05-decisiones-y-preguntas.md) | Decisiones técnicas y de negocio, despliegue en Hostinger, roles |
 | [Fase 1](docs/fases/fase-1.md) | Resumen de lo construido, resultado de la importación, tests y pendientes |
+| [Fase 2](docs/fases/fase-2.md) | Tesorería, migración de caja y bancos, conciliación abril–octubre |
+| [Despliegue](docs/despliegue.md) | Instalación en el VPS, actualización, carga de datos y copias de seguridad |

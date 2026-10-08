@@ -32,7 +32,8 @@ Haciéndolo por módulo:
 - **Aceptación:** tests del motor en verde (§8 de [03](03-motor-contable.md)),
   demo con asientos manuales y BC básico.
 
-## Fase 2 · Tesorería + Balance de comprobación
+## Fase 2 · Tesorería + Balance de comprobación ✅
+Resumen: [fases/fase-2.md](fases/fase-2.md).
 - Cuentas de tesorería (empresa y socios), caja, bancos, categorías (ex
   Referencia cruzada) y mapeos.
 - Traspasos y cambios de divisa con la 699 y las diferencias realizadas.

@@ -21,7 +21,8 @@ test('redirige a la pantalla de acceso y rechaza credenciales incorrectas', asyn
 
 test('el panel muestra el control de cuadre del grupo', async ({ page }) => {
   await login(page);
-  await expect(page.getByText('El balance cuadra')).toBeVisible();
+  await expect(page.getByText('Cuadre del balance')).toBeVisible();
+  await expect(page.getByText('Cuadra', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Empresa')).toHaveValue('');
 });
 

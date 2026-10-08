@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { generalLedger, toDate, trialBalance } from '@kaluch/db';
+import { compareWithBc, generalLedger, toDate, trialBalance } from '@kaluch/db';
 import { BOOK_VIEWS, MONTH_NAMES, paginationSchema, trialBalanceQuerySchema } from '@kaluch/shared';
 import ExcelJS from 'exceljs';
 import type { Response } from 'express';
@@ -99,5 +99,20 @@ export class ReportsController {
       companyIds, accountId: q.accountId, from: toDate(q.from), to: toDate(q.to),
       books: [...BOOK_VIEWS[q.view]], page: q.page, pageSize: q.pageSize,
     });
+  }
+
+  /** Conciliación con el BC del Excel (consolidado, vista Real) para un mes. */
+  @Get('bc-compare')
+  @RequirePermission('reports:financial')
+  async bcCompare(@Query() query: unknown) {
+    const q = parse(
+      z.object({
+        year: z.coerce.number().int(),
+        month: z.coerce.number().int().min(1).max(12),
+        codes: z.string().optional(),
+      }),
+      query,
+    );
+    return compareWithBc(this.prisma, { year: q.year, month: q.month, codePrefixes: q.codes ? q.codes.split(',').map((c) => c.trim()).filter(Boolean) : undefined });
   }
 }
