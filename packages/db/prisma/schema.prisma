@@ -35,6 +35,7 @@ model Company {
   userRoles        UserCompanyRole[]
   treasuryAccounts TreasuryAccount[]
   documents        Document[]
+  partyAccounts    PartyAccount[]
 
   @@map("company")
 }
@@ -158,6 +159,8 @@ model Account {
   mappings         AccountMapping[]
   treasuryAccounts TreasuryAccount[]
   categories       CashCategory[]
+  partyMain        PartyAccount[]    @relation("PartyMainAccount")
+  partyOpposite    PartyAccount[]    @relation("PartyOppositeAccount")
 
   @@index([parentId])
   @@index([code])
@@ -215,6 +218,8 @@ enum EntryKind {
   CLOSING
   OPENING
   REVERSAL
+  /// Reclasificación de fin de mes de saldos por signo (se anula el día 1 del mes siguiente).
+  RECLASS
 }
 
 enum EntryStatus {
@@ -453,6 +458,7 @@ model Document {
   createdBy   String?        @map("created_by") @db.Uuid
 
   treasuryMovement TreasuryMovement?
+  partyDocument    PartyDocument?
 
   @@unique([companyId, number])
   @@index([companyId, docDate])
@@ -514,18 +520,21 @@ enum CategoryKind {
 
 /// Clasificación de movimientos (sustituye a "Referencia cruzada").
 model CashCategory {
-  id               String       @id @default(uuid(7)) @db.Uuid
-  code             String       @unique
+  id               String        @id @default(uuid(7)) @db.Uuid
+  code             String        @unique
   name             String
   kind             CategoryKind
   /// Cuenta contrapartida por defecto (null = va a la bandeja de revisión).
-  accountId        String?      @map("account_id") @db.Uuid
-  account          Account?     @relation(fields: [accountId], references: [id])
-  segmentId        String?      @map("segment_id") @db.Uuid
-  cashFlowCategory String       @default("OPER") @map("cash_flow_category")
+  accountId        String?       @map("account_id") @db.Uuid
+  account          Account?      @relation(fields: [accountId], references: [id])
+  segmentId        String?       @map("segment_id") @db.Uuid
+  cashFlowCategory String        @default("OPER") @map("cash_flow_category")
+  /// Cuenta corriente de contraparte: los movimientos se contabilizan contra ella (con la contraparte).
+  partyAccountId   String?       @map("party_account_id") @db.Uuid
+  partyAccount     PartyAccount? @relation(fields: [partyAccountId], references: [id])
   /// Variantes de texto del Excel que se normalizan a esta categoría.
-  aliases          String[]     @default([])
-  active           Boolean      @default(true)
+  aliases          String[]      @default([])
+  active           Boolean       @default(true)
 
   movements TreasuryMovement[]
 
@@ -552,6 +561,8 @@ model TreasuryMovement {
   description      String
   /// Texto original de "Referencia cruzada" / clasificación del Excel.
   sourceReference  String?       @map("source_reference")
+  /// Contraparte (por la categoría o al reclasificar).
+  partyId          String?       @map("party_id") @db.Uuid
   needsReview      Boolean       @default(false) @map("needs_review")
   reviewNote       String?       @map("review_note")
   resolvedAt       DateTime?     @map("resolved_at") @db.Timestamptz
@@ -699,4 +710,221 @@ model BcExplanation {
 
   @@index([fullCode])
   @@map("bc_explanation")
+}
+
+// ───────────────────────── Contrapartes (fase 3) ─────────────────────────
+
+enum PartyKind {
+  PERSON
+  COMPANY
+}
+
+enum PartyRole {
+  CUSTOMER
+  SUPPLIER
+  EMPLOYEE
+  PARTNER
+  INVESTOR
+  SELLER
+  COURIER
+  LENDER
+  OTHER
+}
+
+/// Persona o empresa con la que se tienen deudas o créditos (cliente, proveedor, trabajador, socio…).
+model Party {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  code      String      @unique
+  name      String
+  kind      PartyKind   @default(PERSON)
+  roles     PartyRole[] @default([])
+  taxId     String?     @map("tax_id")
+  email     String?
+  phone     String?
+  notes     String?
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  accounts  PartyAccount[]
+  openItems OpenItem[]
+
+  @@map("party")
+}
+
+/// Cuenta corriente de una contraparte en una empresa y moneda. Se contabiliza en `accountId`;
+/// si tiene `oppositeAccountId`, al cierre de mes el saldo de signo contrario a la naturaleza de
+/// la cuenta se reclasifica a la opuesta (p. ej. 135.x por cobrar ↔ 405.x por pagar), como el BC.
+model PartyAccount {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  company           Company  @relation(fields: [companyId], references: [id])
+  partyId           String   @map("party_id") @db.Uuid
+  party             Party    @relation(fields: [partyId], references: [id])
+  currency          String   @db.VarChar(3)
+  accountId         String   @map("account_id") @db.Uuid
+  account           Account  @relation("PartyMainAccount", fields: [accountId], references: [id])
+  oppositeAccountId String?  @map("opposite_account_id") @db.Uuid
+  oppositeAccount   Account? @relation("PartyOppositeAccount", fields: [oppositeAccountId], references: [id])
+  name              String
+  /// Origen en el Excel (hoja y términos de la fórmula del BC) para la migración.
+  sourceSheet       String?  @map("source_sheet")
+  sourceFilter      Json?    @map("source_filter")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  documents  PartyDocument[]
+  openItems  OpenItem[]
+  categories CashCategory[]
+
+  @@unique([companyId, partyId, currency, accountId])
+  @@index([partyId])
+  @@map("party_account")
+}
+
+enum PartyDocKind {
+  /// Aumenta lo que la contraparte nos debe (o reduce lo que le debemos): Debe en su cuenta.
+  CHARGE
+  /// Aumenta lo que le debemos (o reduce lo que nos debe): Haber en su cuenta.
+  CREDIT
+  /// Cesión de deuda de una contraparte a otra.
+  ASSIGNMENT
+  OPENING
+  PAYROLL
+}
+
+/// Documento de contraparte: cargo, abono, cesión, nómina o saldo de apertura.
+model PartyDocument {
+  id               String       @id @db.Uuid
+  document         Document     @relation(fields: [id], references: [id])
+  partyAccountId   String       @map("party_account_id") @db.Uuid
+  partyAccount     PartyAccount @relation(fields: [partyAccountId], references: [id])
+  kind             PartyDocKind
+  /// Importe con signo en la moneda de la cuenta corriente: + Debe (nos deben más) / − Haber.
+  amount           Decimal      @db.Decimal(18, 4)
+  currency         String       @db.VarChar(3)
+  rate             Decimal      @db.Decimal(20, 10)
+  amountUsd        Decimal      @map("amount_usd") @db.Decimal(18, 4)
+  counterAccountId String?      @map("counter_account_id") @db.Uuid
+  reference        String?
+  dueDate          DateTime?    @map("due_date") @db.Date
+  description      String
+  entryId          String?      @map("entry_id") @db.Uuid
+
+  payroll PayrollLine?
+
+  @@index([partyAccountId])
+  @@index([reference])
+  @@map("party_document")
+}
+
+enum OpenItemSide {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum OpenItemStatus {
+  OPEN
+  PARTIAL
+  SETTLED
+  CANCELLED
+}
+
+/// Partida abierta: factura, deuda o nómina pendiente, que se liquida con uno o varios pagos.
+model OpenItem {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  partyId        String         @map("party_id") @db.Uuid
+  party          Party          @relation(fields: [partyId], references: [id])
+  partyAccountId String         @map("party_account_id") @db.Uuid
+  partyAccount   PartyAccount   @relation(fields: [partyAccountId], references: [id])
+  /// Documento que la origina (cargo/abono/nómina).
+  documentId     String         @map("document_id") @db.Uuid
+  side           OpenItemSide
+  reference      String
+  docDate        DateTime       @map("doc_date") @db.Date
+  dueDate        DateTime?      @map("due_date") @db.Date
+  currency       String         @db.VarChar(3)
+  /// Importe positivo en la moneda de la partida.
+  amount         Decimal        @db.Decimal(18, 4)
+  amountUsd      Decimal        @map("amount_usd") @db.Decimal(18, 4)
+  /// Pendiente (materializado; se actualiza con cada liquidación).
+  openAmount     Decimal        @map("open_amount") @db.Decimal(18, 4)
+  status         OpenItemStatus @default(OPEN)
+  description    String
+
+  settlements Settlement[]
+
+  @@index([documentId])
+  @@index([partyId, status])
+  @@index([companyId, side, status])
+  @@index([reference])
+  @@map("open_item")
+}
+
+enum SettlementKind {
+  PAYMENT
+  WRITE_OFF
+}
+
+/// Aplicación de un pago (movimiento de tesorería o documento de contraparte) a una partida abierta.
+/// Es un registro de casación: el pago ya está contabilizado en la cuenta de la contraparte.
+/// Las diferencias de cambio de las partidas en moneda extranjera se reconocen en la revaluación
+/// de fin de mes (846/925), igual que en el Excel; aquí se guardan a título informativo.
+model Settlement {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  openItemId        String         @map("open_item_id") @db.Uuid
+  openItem          OpenItem       @relation(fields: [openItemId], references: [id])
+  kind              SettlementKind @default(PAYMENT)
+  /// Documento del pago (movimiento de tesorería o documento de contraparte).
+  paymentDocumentId String?        @map("payment_document_id") @db.Uuid
+  date              DateTime       @db.Date
+  /// Importe aplicado, positivo, en la moneda de la partida.
+  amount            Decimal        @db.Decimal(18, 4)
+  usdAtBooked       Decimal        @map("usd_at_booked") @db.Decimal(18, 4)
+  usdAtPayment      Decimal        @map("usd_at_payment") @db.Decimal(18, 4)
+  note              String?
+  voided            Boolean        @default(false)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  createdBy         String?        @map("created_by") @db.Uuid
+
+  @@index([openItemId])
+  @@index([paymentDocumentId])
+  @@map("settlement")
+}
+
+/// Detalle de nómina de un trabajador en un periodo (documento de contraparte de tipo PAYROLL).
+model PayrollLine {
+  id                  String        @id @db.Uuid
+  partyDocument       PartyDocument @relation(fields: [id], references: [id])
+  /// Mes de la nómina (AAAA-MM).
+  period              String
+  /// Pagador según el Excel: KALUCH, COMUNICACIÓN…
+  employer            String
+  concept             String
+  gross               Decimal       @db.Decimal(18, 4)
+  attendanceDeduction Decimal       @default(0) @map("attendance_deduction") @db.Decimal(18, 4)
+  mipymeDeduction     Decimal       @default(0) @map("mipyme_deduction") @db.Decimal(18, 4)
+  net                 Decimal       @db.Decimal(18, 4)
+  currency            String        @db.VarChar(3)
+
+  @@index([period])
+  @@map("payroll_line")
+}
+
+/// Reclasificación mensual de saldos por signo (por cobrar ↔ por pagar). Repetible: anula la anterior.
+model SignReclassRun {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  year            Int
+  month           Int
+  entryId         String?  @map("entry_id") @db.Uuid
+  /// Contra-asiento del día 1 del mes siguiente.
+  reversalEntryId String?  @map("reversal_entry_id") @db.Uuid
+  status          String   @default("POSTED")
+  movedUsd        Decimal  @default(0) @map("moved_usd") @db.Decimal(18, 4)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy       String?  @map("created_by") @db.Uuid
+
+  @@index([companyId, year, month])
+  @@map("sign_reclass_run")
 }

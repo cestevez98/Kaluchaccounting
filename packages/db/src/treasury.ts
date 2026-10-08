@@ -26,6 +26,8 @@ export interface TreasuryMovementInput {
   sourceReference?: string | null;
   importRowId?: string | null;
   createdBy?: string | null;
+  /** Contraparte (para movimientos con contrapartida en una cuenta de terceros). */
+  partyId?: string | null;
   legs: TreasuryLegInput[];
 }
 
@@ -68,6 +70,7 @@ export async function postTreasuryMovement(tx: Tx, input: TreasuryMovementInput)
   const category = input.categoryId ? await tx.cashCategory.findUnique({ where: { id: input.categoryId } }) : null;
   const net = roundAmount(sum(legs.map((l) => l.usd)));
   let needsReview = false;
+  let partyId: string | null = input.partyId ?? null;
   const counterLines: PostLineInput[] = [];
   const multi = legs.length > 1;
 
@@ -85,20 +88,41 @@ export async function postTreasuryMovement(tx: Tx, input: TreasuryMovementInput)
       counterAccountId = await resolveMapping(tx, 'treasury.exchange.transit', { companyId: input.companyId });
     } else if (input.kind === 'TRANSFER' || category?.kind === 'TRANSFER') {
       counterAccountId = await resolveMapping(tx, 'treasury.transfer.transit', { companyId: input.companyId });
+    } else if (category?.partyAccountId) {
+      counterAccountId = '';
     } else if (category?.accountId) {
       counterAccountId = category.accountId;
     } else {
       counterAccountId = await resolveMapping(tx, 'treasury.suspense', { companyId: input.companyId });
       needsReview = true;
     }
-    counterLines.push({
-      accountId: counterAccountId,
-      currency: FUNCTIONAL_CURRENCY,
-      amount: net.neg().toFixed(4),
-      segmentId: input.segmentId ?? category?.segmentId ?? null,
-      posId: input.posId ?? null,
-      memo: input.description.slice(0, 500),
-    });
+    if (category?.partyAccountId && !counterAccountId) {
+      // Categoría de contraparte: la contrapartida es su cuenta corriente, en su moneda.
+      const pa = await tx.partyAccount.findUniqueOrThrow({ where: { id: category.partyAccountId } });
+      if (pa.companyId !== input.companyId) {
+        throw new LedgerError('INVALID_INPUT', `La cuenta corriente de la categoría ${category.name} es de otra empresa`);
+      }
+      partyId = pa.partyId;
+      if (pa.currency === FUNCTIONAL_CURRENCY) {
+        counterLines.push({ accountId: pa.accountId, currency: FUNCTIONAL_CURRENCY, amount: net.neg().toFixed(4), partyId, segmentId: input.segmentId ?? category.segmentId ?? null, memo: input.description.slice(0, 500) });
+      } else {
+        if (legs.some((l) => l.acc.currency !== pa.currency)) {
+          throw new LedgerError('INVALID_INPUT', `La cuenta corriente de ${category.name} está en ${pa.currency}: el movimiento debe ser en esa moneda`);
+        }
+        for (const l of legs) {
+          counterLines.push({ accountId: pa.accountId, currency: pa.currency, amount: money(l.amount).neg().toFixed(4), rate: l.rate, rateType: l.rateType ?? undefined, partyId, segmentId: input.segmentId ?? category.segmentId ?? null, memo: input.description.slice(0, 500) });
+        }
+      }
+    } else {
+      counterLines.push({
+        accountId: counterAccountId,
+        currency: FUNCTIONAL_CURRENCY,
+        amount: net.neg().toFixed(4),
+        segmentId: input.segmentId ?? category?.segmentId ?? null,
+        posId: input.posId ?? null,
+        memo: input.description.slice(0, 500),
+      });
+    }
   }
 
   const year = date.getUTCFullYear();
@@ -148,6 +172,7 @@ export async function postTreasuryMovement(tx: Tx, input: TreasuryMovementInput)
       posId: input.posId ?? null,
       description: input.description,
       sourceReference: input.sourceReference ?? null,
+      partyId,
       needsReview,
       entryId: entry.id,
       legs: {
@@ -182,7 +207,7 @@ export async function voidTreasuryMovement(tx: Tx, id: string, opts: { createdBy
 export async function reclassifyMovement(
   tx: Tx,
   id: string,
-  opts: { accountId: string; categoryId?: string | null; note?: string; userId?: string | null },
+  opts: { accountId: string; categoryId?: string | null; partyId?: string | null; note?: string; userId?: string | null },
 ) {
   const m = await tx.treasuryMovement.findUnique({ where: { id }, include: { document: true } });
   if (!m || !m.entryId) throw new LedgerError('NOT_FOUND', 'Movimiento no encontrado');
@@ -210,7 +235,7 @@ export async function reclassifyMovement(
       documentId: m.id,
       createdBy: opts.userId ?? null,
       lines: [
-        { accountId: opts.accountId, currency: FUNCTIONAL_CURRENCY, amount: amountUsd.toFixed(4), segmentId: lines[0]?.segmentId ?? null },
+        { accountId: opts.accountId, currency: FUNCTIONAL_CURRENCY, amount: amountUsd.toFixed(4), segmentId: lines[0]?.segmentId ?? null, partyId: opts.partyId ?? null },
         { accountId: m.counterAccountId!, currency: FUNCTIONAL_CURRENCY, amount: amountUsd.neg().toFixed(4) },
       ],
     });
@@ -221,6 +246,7 @@ export async function reclassifyMovement(
       needsReview: false,
       counterAccountId: opts.accountId,
       categoryId: opts.categoryId ?? m.categoryId,
+      partyId: opts.partyId ?? m.partyId,
       reviewNote: opts.note ?? null,
       resolvedAt: new Date(),
       resolvedBy: opts.userId ?? null,

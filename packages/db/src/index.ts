@@ -12,5 +12,6 @@ export * from './treasury';
 export * from './revaluation';
 export * from './bc-compare';
 export * from './system-accounts';
-export type { CategoryKind, MovementKind, TreasuryKind } from '@prisma/client';
+export type { CategoryKind, MovementKind, TreasuryKind, PartyDocKind, PartyRole, OpenItemSide } from '@prisma/client';
 export * from './bank';
+export * from './parties';

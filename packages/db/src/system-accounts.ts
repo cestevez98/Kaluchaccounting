@@ -6,6 +6,7 @@ import { upsertAccounts } from './seed/accounts';
  * mapeos contables que usa el motor. Idempotente.
  */
 export const SYSTEM_ACCOUNTS = [
+  { subcode: '9995', name: 'Puente de migración - Deudas y nómina del Excel (contrapartida pendiente de clasificar)' },
   { subcode: '9996', name: 'Transitoria - Cambios de moneda pendientes de casar' },
   { subcode: '9997', name: 'Saldos de apertura pendientes de distribuir' },
   { subcode: '9998', name: 'Pendiente de clasificar (bandeja de revisión)' },
@@ -27,7 +28,17 @@ export const DEFAULT_MAPPINGS: Record<string, string[]> = {
   'fx.holding.cash.gain': ['925.9990', '925.0001'],
   'fx.holding.receivables.loss': ['846.8880', '846.0001'],
   'fx.holding.receivables.gain': ['925.8880', '925.0001'],
+  'party.migration.bridge': ['699.9995'],
+  'payroll.expense': ['826.9990', '826.8880'],
+  'payroll.mipyme': ['146.0003'],
 };
+
+/** Mapeos por segmento (más específicos que los generales). */
+export const SEGMENT_MAPPINGS: { key: string; segment: string; code: string }[] = [
+  { key: 'payroll.expense', segment: '888', code: '826.8880' },
+  { key: 'payroll.expense', segment: '999', code: '826.9990' },
+  { key: 'payroll.expense', segment: '777', code: '826.7770' },
+];
 
 export async function ensureSystemAccounts(prisma: PrismaClient) {
   const transit = await prisma.account.findFirst({ where: { code: '699', subcode: null } });
@@ -55,6 +66,13 @@ export async function ensureSystemAccounts(prisma: PrismaClient) {
       continue;
     }
     await prisma.accountMapping.create({ data: { key, accountId: preferred.id } });
+  }
+  for (const m of SEGMENT_MAPPINGS) {
+    const segment = await prisma.segment.findUnique({ where: { code: m.segment } });
+    const account = await prisma.account.findFirst({ where: { fullCode: m.code, postable: true } });
+    if (!segment || !account) continue;
+    if (await prisma.accountMapping.findFirst({ where: { key: m.key, companyId: null, segmentId: segment.id, currency: null } })) continue;
+    await prisma.accountMapping.create({ data: { key: m.key, segmentId: segment.id, accountId: account.id } });
   }
   return { missing };
 }

@@ -40,7 +40,7 @@ export interface PostEntryInput {
   lines: PostLineInput[];
 }
 
-const EXPLICIT_USD_KINDS: EntryKind[] = ['REVAL', 'OPENING', 'CLOSING', 'REVERSAL'];
+const EXPLICIT_USD_KINDS: EntryKind[] = ['REVAL', 'OPENING', 'CLOSING', 'REVERSAL', 'RECLASS'];
 
 /** Busca la cuenta de un mapeo, de lo más específico a lo más general. */
 export async function resolveMapping(
