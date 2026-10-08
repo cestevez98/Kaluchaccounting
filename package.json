@@ -1,0 +1,26 @@
+{
+  "name": "kaluch-erp",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test --concurrency=1",
+    "db:up": "docker compose up -d postgres",
+    "db:migrate": "pnpm --filter @kaluch/db migrate:deploy",
+    "db:seed": "pnpm --filter @kaluch/db seed",
+    "db:reset": "pnpm --filter @kaluch/db reset",
+    "etl": "pnpm --filter @kaluch/etl etl",
+    "e2e": "pnpm --filter @kaluch/web e2e"
+  },
+  "devDependencies": {
+    "turbo": "2.11.7",
+    "typescript": "5.9.3",
+    "prettier": "3.6.2"
+  }
+}

@@ -1,0 +1,426 @@
+// Esquema núcleo (fase 1). Ver docs/02-modelo-datos.md.
+// Las reglas que Prisma no expresa (cuadre diferido, inmutabilidad, periodos,
+// saldos materializados, auditoría) están en migraciones SQL de esta misma carpeta.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Organización ─────────────────────────
+
+enum CompanyKind {
+  LEGAL
+  PARTNER_POOL
+}
+
+model Company {
+  id           String      @id @default(uuid(7)) @db.Uuid
+  code         String      @unique
+  legalName    String      @map("legal_name")
+  section      String
+  country      String?     @db.Char(2)
+  kind         CompanyKind @default(LEGAL)
+  consolidates Boolean     @default(true)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  periods   FiscalPeriod[]
+  entries   JournalEntry[]
+  userRoles UserCompanyRole[]
+
+  @@map("company")
+}
+
+model Segment {
+  id       String    @id @default(uuid(7)) @db.Uuid
+  code     String    @unique
+  name     String
+  parentId String?   @map("parent_id") @db.Uuid
+  parent   Segment?  @relation("SegmentTree", fields: [parentId], references: [id])
+  children Segment[] @relation("SegmentTree")
+  active   Boolean   @default(true)
+
+  dimensionValues DimensionValue[]
+
+  @@map("segment")
+}
+
+enum Dimension {
+  CONTAINER
+  PROJECT
+  POS
+  WAREHOUSE
+}
+
+model DimensionValue {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  dimension Dimension
+  code      String
+  name      String
+  segmentId String?   @map("segment_id") @db.Uuid
+  segment   Segment?  @relation(fields: [segmentId], references: [id])
+  companyId String?   @map("company_id") @db.Uuid
+  active    Boolean   @default(true)
+
+  @@unique([dimension, code])
+  @@map("dimension_value")
+}
+
+// ───────────────────────── Monedas y tasas ─────────────────────────
+
+model Currency {
+  code     String  @id @db.VarChar(3)
+  name     String
+  decimals Int     @default(2)
+  active   Boolean @default(true)
+
+  @@map("currency")
+}
+
+model RateType {
+  code String @id @db.VarChar(8)
+  name String
+
+  @@map("rate_type")
+}
+
+/// Convención: 1 base (USD salvo CUP/EUR) = rate unidades de `currency`.
+model ExchangeRate {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  rateDate  DateTime @map("rate_date") @db.Date
+  currency  String   @db.VarChar(3)
+  rateType  String   @map("rate_type") @db.VarChar(8)
+  base      String   @default("USD") @db.VarChar(3)
+  rate      Decimal  @db.Decimal(20, 10)
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy String?  @map("created_by") @db.Uuid
+
+  @@unique([rateDate, currency, rateType, base])
+  @@index([currency, rateType, rateDate(sort: Desc)])
+  @@map("exchange_rate")
+}
+
+// ───────────────────────── Plan de cuentas ─────────────────────────
+
+enum Nature {
+  DEUDORA
+  ACREEDORA
+  MIXTA
+}
+
+enum Classification {
+  AC
+  PC
+  CC
+  CND
+  CNA
+}
+
+model Account {
+  id               String         @id @default(uuid(7)) @db.Uuid
+  parentId         String?        @map("parent_id") @db.Uuid
+  parent           Account?       @relation("AccountTree", fields: [parentId], references: [id])
+  children         Account[]      @relation("AccountTree")
+  code             String
+  subcode          String?
+  /// Código único interno ("101.0001"; duplicados del Excel llevan sufijo "#2").
+  fullCode         String         @unique @map("full_code")
+  /// Código tal como aparece en el Excel/UI.
+  displayCode      String         @map("display_code")
+  name             String
+  nature           Nature
+  classification   Classification
+  postable         Boolean
+  currencyLock     String?        @map("currency_lock") @db.VarChar(3)
+  revalRateType    String?        @map("reval_rate_type") @db.VarChar(8)
+  revalCurrency    String?        @map("reval_currency") @db.VarChar(3)
+  requiresParty    Boolean        @default(false) @map("requires_party")
+  isIntercompany   Boolean        @default(false) @map("is_intercompany")
+  isPendingExport  Boolean        @default(false) @map("is_pending_export")
+  defaultSegmentId String?        @map("default_segment_id") @db.Uuid
+  /// Anomalía detectada al migrar (duplicado, naturaleza incoherente…).
+  anomaly          String?
+  sortOrder        Int            @default(0) @map("sort_order")
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  lines    JournalLine[]
+  mappings AccountMapping[]
+
+  @@index([parentId])
+  @@index([code])
+  @@map("account")
+}
+
+/// Resolución de cuentas para reglas de contabilización (de lo específico a lo general).
+model AccountMapping {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  key        String
+  companyId  String?  @map("company_id") @db.Uuid
+  segmentId  String?  @map("segment_id") @db.Uuid
+  currency   String?  @db.VarChar(3)
+  accountId  String   @map("account_id") @db.Uuid
+  account    Account  @relation(fields: [accountId], references: [id])
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([key])
+  @@map("account_mapping")
+}
+
+// ───────────────────────── Libro mayor ─────────────────────────
+
+enum PeriodStatus {
+  OPEN
+  SOFT_CLOSED
+  LOCKED
+}
+
+model FiscalPeriod {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  companyId String       @map("company_id") @db.Uuid
+  company   Company      @relation(fields: [companyId], references: [id])
+  year      Int
+  month     Int
+  status    PeriodStatus @default(OPEN)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  entries JournalEntry[]
+
+  @@unique([companyId, year, month])
+  @@map("fiscal_period")
+}
+
+enum Book {
+  BASE
+  REAL
+  FISCAL
+}
+
+enum EntryKind {
+  AUTO
+  MANUAL
+  REVAL
+  CLOSING
+  OPENING
+  REVERSAL
+}
+
+enum EntryStatus {
+  POSTED
+  REVERSED
+}
+
+model JournalEntry {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  companyId  String       @map("company_id") @db.Uuid
+  company    Company      @relation(fields: [companyId], references: [id])
+  periodId   String       @map("period_id") @db.Uuid
+  period     FiscalPeriod @relation(fields: [periodId], references: [id])
+  number     String
+  entryDate  DateTime     @map("entry_date") @db.Date
+  book       Book         @default(BASE)
+  kind       EntryKind
+  documentId String?      @map("document_id") @db.Uuid
+  reversesId String?      @unique @map("reverses_id") @db.Uuid
+  reverses   JournalEntry? @relation("Reversal", fields: [reversesId], references: [id])
+  reversedBy JournalEntry? @relation("Reversal")
+  status     EntryStatus  @default(POSTED)
+  memo       String
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  createdBy  String?      @map("created_by") @db.Uuid
+
+  lines JournalLine[]
+
+  @@unique([companyId, number])
+  @@index([companyId, entryDate])
+  @@map("journal_entry")
+}
+
+model JournalLine {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  entryId           String       @map("entry_id") @db.Uuid
+  entry             JournalEntry @relation(fields: [entryId], references: [id])
+  lineNo            Int          @map("line_no")
+  /// Desnormalizados desde journal_entry por trigger (para índices).
+  companyId         String       @map("company_id") @db.Uuid
+  entryDate         DateTime     @map("entry_date") @db.Date
+  accountId         String       @map("account_id") @db.Uuid
+  account           Account      @relation(fields: [accountId], references: [id])
+  segmentId         String?      @map("segment_id") @db.Uuid
+  partyId           String?      @map("party_id") @db.Uuid
+  treasuryAccountId String?      @map("treasury_account_id") @db.Uuid
+  containerId       String?      @map("container_id") @db.Uuid
+  projectId         String?      @map("project_id") @db.Uuid
+  posId             String?      @map("pos_id") @db.Uuid
+  counterCompanyId  String?      @map("counter_company_id") @db.Uuid
+  currency          String       @db.VarChar(3)
+  /// Importe original con signo: + Debe / − Haber.
+  amount            Decimal      @db.Decimal(18, 4)
+  rate              Decimal      @db.Decimal(20, 10)
+  rateType          String?      @map("rate_type") @db.VarChar(8)
+  amountUsd         Decimal      @map("amount_usd") @db.Decimal(18, 4)
+  cashFlowCategory  String?      @map("cash_flow_category")
+  memo              String?
+
+  @@unique([entryId, lineNo])
+  @@index([companyId, accountId, entryDate])
+  @@index([partyId, entryDate])
+  @@index([containerId])
+  @@index([treasuryAccountId, entryDate])
+  @@map("journal_line")
+}
+
+/// Saldos materializados por periodo. Mantenidos por trigger al insertar líneas.
+/// segment_key = segment_id o '00000000-…' si no hay segmento (para la PK).
+model LedgerBalance {
+  companyId   String  @map("company_id") @db.Uuid
+  book        Book
+  periodId    String  @map("period_id") @db.Uuid
+  year        Int
+  month       Int
+  accountId   String  @map("account_id") @db.Uuid
+  segmentKey  String  @map("segment_key") @db.Uuid
+  currency    String  @db.VarChar(3)
+  debitUsd    Decimal @default(0) @map("debit_usd") @db.Decimal(18, 4)
+  creditUsd   Decimal @default(0) @map("credit_usd") @db.Decimal(18, 4)
+  amountOrig  Decimal @default(0) @map("amount_orig") @db.Decimal(18, 4)
+
+  @@id([companyId, book, periodId, accountId, segmentKey, currency])
+  @@index([year, month])
+  @@map("ledger_balance")
+}
+
+model DocumentSequence {
+  companyId String @map("company_id") @db.Uuid
+  year      Int
+  kind      String
+  lastValue Int    @default(0) @map("last_value")
+
+  @@id([companyId, year, kind])
+  @@map("document_sequence")
+}
+
+// ───────────────────────── Parámetros ─────────────────────────
+
+model Parameter {
+  key         String             @id
+  description String
+  versions    ParameterVersion[]
+
+  @@map("parameter")
+}
+
+model ParameterVersion {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  key       String
+  parameter Parameter @relation(fields: [key], references: [key])
+  validFrom DateTime  @map("valid_from") @db.Date
+  value     Json
+
+  @@unique([key, validFrom])
+  @@map("parameter_version")
+}
+
+// ───────────────────────── Seguridad y auditoría ─────────────────────────
+
+model AppUser {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  totpSecret   String?  @map("totp_secret")
+  totpEnabled  Boolean  @default(false) @map("totp_enabled")
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  companyRoles UserCompanyRole[]
+
+  @@map("app_user")
+}
+
+model Role {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  name        String           @unique
+  description String           @default("")
+  system      Boolean          @default(false)
+  requires2fa Boolean          @default(false) @map("requires_2fa")
+  permissions RolePermission[]
+  assignments UserCompanyRole[]
+
+  @@map("role")
+}
+
+model RolePermission {
+  roleId     String @map("role_id") @db.Uuid
+  role       Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission String
+
+  @@id([roleId, permission])
+  @@map("role_permission")
+}
+
+model UserCompanyRole {
+  userId    String  @map("user_id") @db.Uuid
+  user      AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId String  @map("company_id") @db.Uuid
+  company   Company @relation(fields: [companyId], references: [id])
+  roleId    String  @map("role_id") @db.Uuid
+  role      Role    @relation(fields: [roleId], references: [id])
+
+  @@id([userId, companyId, roleId])
+  @@map("user_company_role")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  tableName String   @map("table_name")
+  recordId  String   @map("record_id")
+  action    String
+  before    Json?
+  after     Json?
+  userId    String?  @map("user_id") @db.Uuid
+  at        DateTime @default(now()) @db.Timestamptz
+
+  @@index([tableName, recordId])
+  @@index([at])
+  @@map("audit_log")
+}
+
+// ───────────────────────── Migración (ETL) ─────────────────────────
+
+/// Valores del BC del Excel por cuenta y mes, para la conciliación de aceptación.
+model BcReference {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  importId   String   @map("import_id") @db.Uuid
+  fullCode   String   @map("full_code")
+  excelRow   Int      @map("excel_row")
+  label      String
+  year       Int
+  month      Int
+  valueUsd   Decimal  @map("value_usd") @db.Decimal(18, 4)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([importId, excelRow, year, month])
+  @@map("bc_reference")
+}
+
+model ImportBatch {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  sourceFile String   @map("source_file")
+  fileHash   String   @map("file_hash")
+  tableName  String   @map("table_name")
+  stats      Json
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("import_batch")
+}

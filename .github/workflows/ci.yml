@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kaluch
+          POSTGRES_PASSWORD: kaluch
+          POSTGRES_DB: kaluch_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U kaluch" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://kaluch:kaluch@localhost:5432/kaluch_test?schema=public
+      TEST_DATABASE_URL: postgresql://kaluch:kaluch@localhost:5432/kaluch_test?schema=public
+      E2E_DATABASE_URL: postgresql://kaluch:kaluch@localhost:5432/kaluch_e2e_test?schema=public
+      JWT_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env
+      - name: Crear base de datos E2E
+        run: PGPASSWORD=kaluch psql -h localhost -U kaluch -d kaluch_test -c 'CREATE DATABASE kaluch_e2e_test'
+      - name: Build (shared, db, etl, api, web)
+        run: pnpm build
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Tests unitarios e integración (motor contable, API, ETL)
+        run: pnpm test
+      - name: Instalar Chromium para Playwright
+        run: pnpm --filter @kaluch/web exec playwright install --with-deps chromium
+      - name: Tests E2E
+        run: pnpm e2e
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7

@@ -1,0 +1,18 @@
+# Entorno de desarrollo. Producción se define en docker/compose.prod.yml (fase 2).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kaluch
+      POSTGRES_PASSWORD: kaluch
+      POSTGRES_DB: kaluch
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kaluch"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:

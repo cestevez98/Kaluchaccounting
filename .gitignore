@@ -7,3 +7,10 @@ data/
 *.xlsx
 *.xls
 *.csv
+dist/
+.next/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo

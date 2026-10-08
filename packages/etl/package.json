@@ -1,0 +1,24 @@
+{
+  "name": "@kaluch/etl",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "etl": "dotenv -e ../../.env -- tsx src/cli.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kaluch/db": "workspace:*",
+    "@kaluch/shared": "workspace:*",
+    "exceljs": "4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.8",
+    "dotenv-cli": "10.0.0",
+    "tsx": "4.20.6",
+    "vitest": "3.2.4"
+  }
+}

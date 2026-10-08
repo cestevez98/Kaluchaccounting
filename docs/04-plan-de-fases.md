@@ -16,7 +16,9 @@ Haciéndolo por módulo:
 - Arquitectura, ERD, motor contable, análisis del Excel y plan.
 - Decisiones de negocio registradas en [05](05-decisiones-y-preguntas.md) (08/10/2026).
 
-## Fase 1 · Fundaciones + motor contable
+## Fase 1 · Fundaciones + motor contable ✅
+> Completada el 08/10/2026 — ver [fases/fase-1.md](fases/fase-1.md).
+
 - Monorepo, Docker Compose, CI (lint, typecheck, unit, integración con Postgres, E2E).
 - Auth (login, 2FA, roles configurables por empresa y por recurso, RLS) y auditoría.
 - Empresas (DM, GR, KEI, KTR, KGT y SOC), segmentos jerárquicos (999 → 777, Proyectos),
