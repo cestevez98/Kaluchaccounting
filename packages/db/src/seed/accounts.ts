@@ -19,12 +19,16 @@ export interface AccountSeedRow {
 
 /**
  * Inserta o actualiza el plan de cuentas. Las filas sin subcuenta son cuentas de
- * grupo; son de detalle (postable) solo si no tienen subcuentas. Los códigos
+ * grupo; son de detalle (postable) solo si no tienen subcuentas detrás. Los códigos
  * repetidos reciben un sufijo interno "#2", "#3"… y se marcan como anomalía.
  */
 export async function upsertAccounts(prisma: PrismaClient, rows: AccountSeedRow[]) {
   const segments = new Map((await prisma.segment.findMany()).map((s) => [s.code, s.id]));
-  const withChildren = new Set(rows.filter((r) => r.subcode).map((r) => r.code));
+  // Una cuenta de grupo tiene subcuentas si aparecen detrás de ella (en el Excel, 1816 "Sobrevaloración" está
+  // después de 1816.8880 y es otra cuenta, de detalle).
+  const headerAt = new Map<string, number>();
+  rows.forEach((r, i) => { if (!r.subcode && !headerAt.has(r.code)) headerAt.set(r.code, i); });
+  const withChildren = new Set(rows.filter((r, i) => r.subcode && (headerAt.get(r.code) ?? Infinity) < i).map((r) => r.code));
   const seen = new Map<string, number>();
   const parentIds = new Map<string, string>();
   const result = { created: 0, updated: 0, duplicates: [] as string[] };

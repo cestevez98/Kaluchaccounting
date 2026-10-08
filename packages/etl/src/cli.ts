@@ -10,6 +10,7 @@
  *   debts     Deudas, proveedores y nómina (tras treasury): contrapartes, apertura, documentos por fila,
  *             partidas abiertas, revaluación y reclasificación por signo
  *             [--opening=2026-03-31] [--debt-company=KEI] [--revalue-from=2026-04] [--revalue-until=2026-10]
+ *   sales     Exportación y distribución (tras debts): ventas, costos, inventario, CxC de clientes e inversionistas
  *   explain   Explica (y comprueba al céntimo) las diferencias conocidas de tenencia con el BC  [--from] [--to]
  *   compare   Conciliación con el BC  [--from=2026-04] [--to=2026-10] [--codes=101,109,...] [--out=data/conciliacion.xlsx]
  * El Excel nunca se sube al repositorio: colócalo en data/ (ignorado por git).
@@ -18,12 +19,12 @@ import { PrismaClient } from '@kaluch/db';
 import { importBcReference, importChartOfAccounts, importRates } from './importers';
 import { runCompare } from './compare';
 import { importTreasury } from './treasury-import';
-import { importDebts } from './debts-import';
-import { explainHoldingDifferences } from './explain';
+import { importDebts, importSales } from './debts-import';
+import { explainHeaderInconsistencies, explainHoldingDifferences, explainStateAccounts } from './explain';
 import { loadWorkbook } from './workbook';
 
 /** Cuentas conciliadas por defecto: tesorería (fase 2) y deudas, proveedores y nómina (fase 3). */
-const DEFAULT_COMPARE_CODES = '101,109,110,111,112,113,114,135,146,405,406,407,408,409,410,411,412,413,455,699,845,846,924,925';
+const DEFAULT_COMPARE_CODES = '101,109,110,111,112,113,114,135,136,137,139,146,180,181,1181,405,406,407,408,409,410,411,412,413,430,455,699,800,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,900,901,920,921,924,925,926,930,1900,1814,1815,1816,1817,2900,2814,2815,2816';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -33,8 +34,13 @@ async function main() {
   if (cmd === 'explain') {
     const prisma = new PrismaClient();
     try {
-      const r = await explainHoldingDifferences(prisma, { from: opt('from', '2026-04'), to: opt('to', '2026-10') });
-      console.table(r);
+      const range = { from: opt('from', '2026-04'), to: opt('to', '2026-10') };
+      console.table(await explainHoldingDifferences(prisma, range));
+      const state = await explainStateAccounts(prisma, range);
+      if (state.length) console.table(state);
+      // Al final: las cabeceras se explican cuando sus subcuentas ya lo están.
+      const headers = await explainHeaderInconsistencies(prisma, { ...range, codes: opt('codes', DEFAULT_COMPARE_CODES).split(',') });
+      if (headers.length) console.table(headers);
     } finally {
       await prisma.$disconnect();
     }
@@ -53,8 +59,8 @@ async function main() {
     }
     return;
   }
-  if (!cmd || !file || !['coa', 'rates', 'bc-ref', 'all', 'treasury', 'debts'].includes(cmd)) {
-    console.error('Uso: pnpm etl <coa|rates|bc-ref|all|treasury|debts> <ruta.xlsx> [opciones] · pnpm etl compare [salida.xlsx] [opciones]');
+  if (!cmd || !file || !['coa', 'rates', 'bc-ref', 'all', 'treasury', 'debts', 'sales'].includes(cmd)) {
+    console.error('Uso: pnpm etl <coa|rates|bc-ref|all|treasury|debts|sales> <ruta.xlsx> [opciones] · pnpm etl compare [salida.xlsx] [opciones]');
     process.exit(2);
   }
   const t0 = Date.now();
@@ -89,9 +95,9 @@ async function main() {
       if (r.revaluations.length) console.log('Revaluaciones:', r.revaluations.filter((x) => x.totalUsd !== '0.0000').map((x) => `${x.company} ${x.month}: ${x.totalUsd}`).join(' · '));
       if (r.issues.length) console.log(`Avisos (${r.issues.length}):\n  - ${r.issues.slice(0, 60).join('\n  - ')}`);
     }
-    if (cmd === 'debts') {
+    if (cmd === 'debts' || cmd === 'sales') {
       const t0 = Date.now();
-      const r = await importDebts(prisma, w, file, {
+      const r = await (cmd === 'sales' ? importSales : importDebts)(prisma, w, file, {
         openingDate: opt('opening', '2026-03-31'),
         debtCompany: opt('debt-company', 'KEI'),
         maxDate: opt('max-date', '2026-12-31'),
@@ -99,7 +105,7 @@ async function main() {
         revalueUntil: opt('revalue-until', '2026-10') || null,
         log: (m) => console.log(m),
       });
-      console.log(`\nDeudas (${((Date.now() - t0) / 1000).toFixed(0)} s):`, r.stats);
+      console.log(`\n${cmd === 'sales' ? 'Ventas' : 'Deudas'} (${((Date.now() - t0) / 1000).toFixed(0)} s):`, r.stats);
       if (r.issues.length) console.log(`Avisos (${r.issues.length}):\n  - ${r.issues.slice(0, 80).join('\n  - ')}`);
     }
     if (cmd === 'bc-ref' || cmd === 'all') {

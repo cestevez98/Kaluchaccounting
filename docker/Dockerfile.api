@@ -22,5 +22,5 @@ RUN useradd --system --uid 1001 kaluch && chown -R kaluch /app
 USER kaluch
 EXPOSE 4000
 ENTRYPOINT ["/usr/bin/tini", "--"]
-# Aplica migraciones pendientes y arranca la API.
-CMD ["sh", "-c", "cd packages/db && node node_modules/prisma/build/index.js migrate deploy && cd /app && node apps/api/dist/main.js"]
+# Aplica migraciones pendientes, sincroniza catálogos, roles y mapeos, y arranca la API.
+CMD ["sh", "-c", "cd packages/db && node node_modules/prisma/build/index.js migrate deploy && node dist/seed/sync.js && cd /app && node apps/api/dist/main.js"]

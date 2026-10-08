@@ -67,7 +67,7 @@ Resumen: [fases/fase-3.md](fases/fase-3.md).
 - **ETL:** las 27 hojas `Deuda_*` y las 5 `RRHH_*`.
 - **Aceptación:** 135, 146, 405–413, 455, 699 y la parte de CxC de 846/925 concilian.
 
-## Fase 4 · Exportación y Distribución
+## Fase 4 · Exportación y Distribución ✅
 - Facturas de exportación (FOB, costos, comisiones, utilidad, cierre),
   pendientes 2900/2814–2816, facturas internas y ponderación de costos.
 - Contenedores, productos por contenedor, costos Real/Fiscal, inventario

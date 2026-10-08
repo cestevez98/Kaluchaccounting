@@ -23,6 +23,7 @@ export const PERMISSIONS = {
   'parties:read': 'Consultar contrapartes, cuentas corrientes y estados de cuenta',
   'parties:manage': 'Contrapartes: alta, cargos, abonos, cesiones y liquidaciones',
   'payroll:manage': 'Registrar nóminas',
+  'sales:read': 'Consultar facturas, contenedores, inventario, comisiones y utilidad',
   // Fases siguientes (se declaran ya para poder asignarlos a roles)
   'cash:operate': 'Operar caja',
   'bank:reconcile': 'Conciliación bancaria y traspasos',
@@ -41,7 +42,7 @@ export interface SeedRole {
 }
 
 const READ_ALL: Permission[] = [
-  'accounts:read', 'fx:read', 'ledger:read', 'period:read', 'reports:financial', 'parties:read',
+  'accounts:read', 'fx:read', 'ledger:read', 'period:read', 'reports:financial', 'parties:read', 'sales:read',
 ];
 
 export const SEED_ROLES: SeedRole[] = [
@@ -53,7 +54,7 @@ export const SEED_ROLES: SeedRole[] = [
     permissions: [
       ...READ_ALL, 'accounts:manage', 'fx:manage', 'ledger:post', 'ledger:reverse',
       'ledger:post_soft_closed', 'period:close', 'period:lock', 'audit:read', 'bank:reconcile',
-      'tax:manage', 'parties:manage', 'payroll:manage',
+      'tax:manage', 'parties:manage', 'payroll:manage', 'sales:operate', 'inventory:operate',
     ],
   },
   { name: 'Cajero', description: 'Operación de caja', requires2fa: false, permissions: ['fx:read', 'cash:operate'] },
@@ -69,8 +70,8 @@ export const SEED_ROLES: SeedRole[] = [
     requires2fa: false,
     permissions: [...READ_ALL, 'tax:manage'],
   },
-  { name: 'Comercial y Ventas', description: 'Facturación y cobros', requires2fa: false, permissions: ['fx:read', 'sales:operate', 'parties:read'] },
-  { name: 'Almacén', description: 'Inventario y contenedores', requires2fa: false, permissions: ['inventory:operate'] },
+  { name: 'Comercial y Ventas', description: 'Facturación y cobros', requires2fa: false, permissions: ['fx:read', 'sales:read', 'sales:operate', 'parties:read'] },
+  { name: 'Almacén', description: 'Inventario y contenedores', requires2fa: false, permissions: ['sales:read', 'inventory:operate'] },
   { name: 'Solo lectura', description: 'Consulta de reportes', requires2fa: false, permissions: READ_ALL },
 ];
 

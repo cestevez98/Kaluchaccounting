@@ -10,6 +10,7 @@ interface Row {
   status: 'OK' | 'EXPLAINED' | 'DIFF' | 'ONLY_SYSTEM'; explanation: string | null;
 }
 interface Result { rows: Row[]; summary: Record<Row['status'], number>; importId: string | null }
+interface Control { name: string; excel: string; system: string; diff: string; status: Row['status']; explainedBy: string[]; pending: string[] }
 
 const STATUS = {
   OK: { label: 'Cuadra', tone: 'green' },
@@ -19,10 +20,15 @@ const STATUS = {
 } as const;
 
 const PRESETS = [
-  { label: 'Migradas (fases 2 y 3)', codes: '101,109,110,111,112,113,114,135,146,405,406,407,408,409,410,411,412,413,455,699,845,846,924,925' },
+  {
+    label: 'Migradas (fases 2 a 4)',
+    codes: '101,109,110,111,112,113,114,135,136,137,139,146,180,181,1181,405,406,407,408,409,410,411,412,413,430,455,699,800,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,900,901,920,921,924,925,926,930,1900,1814,1815,1816,1817,2900,2814,2815,2816',
+  },
   { label: 'Caja y bancos', codes: '101,109,110,111,112,113,114' },
   { label: 'Deudas, proveedores y nómina', codes: '135,146,405,406,407,408,409,410,411,412,413,455,699' },
   { label: 'Diferencias de cambio y tenencia', codes: '845,846,924,925' },
+  { label: 'Exportación y distribución (fase 4)', codes: '136,137,139,180,181,1181,430,800,814,815,816,817,824,826,900,901,1900,1814,1815,1816,1817,2900,2814,2815,2816' },
+  { label: 'Gastos e ingresos de operación', codes: '827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,847,848,849,920,921,926,930' },
   { label: 'Todas las cuentas', codes: '' },
 ];
 
@@ -33,6 +39,7 @@ export default function BcComparePage() {
   const [only, setOnly] = useState<'' | Row['status']>('');
   const { data, error, loading } = useApi<Result>(`/reports/bc-compare${qs({ year, month, codes })}`);
   const rows = data?.rows.filter((r) => !only || r.status === only) ?? [];
+  const { data: controls } = useApi<Control[]>(`/reports/bc-compare/controls${qs({ year, month })}`);
 
   return (
     <div>
@@ -87,6 +94,29 @@ export default function BcComparePage() {
         {loading && !data && <Spinner />}
       </div>
       <p className="mt-2 text-xs text-gray-500">Mes mostrado: {MONTH_NAMES[month - 1]} {year}.</p>
+      {controls && controls.length > 0 && (
+        <div className="card mt-4 overflow-x-auto">
+          <div className="border-b border-line px-4 py-2.5 text-xs font-bold">Totales de control del BC (ingresos, gastos y utilidad por segmento)</div>
+          <table className="table">
+            <thead><tr><th>Total</th><th className="num">Excel</th><th className="num">Sistema</th><th className="num">Diferencia</th><th>Estado</th><th>Detalle</th></tr></thead>
+            <tbody>
+              {controls.map((c) => (
+                <tr key={c.name}>
+                  <td className="font-semibold">{c.name}</td>
+                  <td className="num">{formatNumber(c.excel)}</td>
+                  <td className="num">{formatNumber(c.system)}</td>
+                  <td className={`num ${c.status === 'DIFF' ? 'font-semibold text-red-700' : 'text-gray-500'}`}>{formatNumber(c.diff)}</td>
+                  <td><Badge tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Badge></td>
+                  <td className="text-xs text-gray-600">
+                    {c.status === 'EXPLAINED' && `Diferencias ya explicadas de ${c.explainedBy.join(', ')}`}
+                    {c.status === 'DIFF' && c.pending.length > 0 && `Cuentas con diferencia: ${c.pending.join(', ')}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

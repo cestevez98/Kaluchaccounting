@@ -2,11 +2,18 @@ import type { PrismaClient } from '@prisma/client';
 import { upsertParty, upsertPartyAccount } from '../parties';
 
 /** Contrapartes de DEMOSTRACIÓN (ficticias). */
-const PARTIES: { code: string; name: string; kind: 'PERSON' | 'COMPANY'; roles: ('CUSTOMER' | 'SUPPLIER' | 'EMPLOYEE' | 'PARTNER' | 'COURIER')[]; company: string; currency: string; account: string; opposite?: string }[] = [
+const PARTIES: { code: string; name: string; kind: 'PERSON' | 'COMPANY'; roles: ('CUSTOMER' | 'SUPPLIER' | 'EMPLOYEE' | 'PARTNER' | 'COURIER' | 'SELLER' | 'INVESTOR')[]; company: string; currency: string; account: string; opposite?: string }[] = [
   { code: 'CONTRAPARTE_DEMO', name: 'Contraparte demo', kind: 'PERSON', roles: ['COURIER'], company: 'DM', currency: 'USD', account: '135.0001', opposite: '405.0001' },
   { code: 'CONTRAPARTE_EUR', name: 'Contraparte demo EUR', kind: 'PERSON', roles: ['CUSTOMER'], company: 'DM', currency: 'EUR', account: '135.0002', opposite: '405.0002' },
   { code: 'PROVEEDOR_DEMO', name: 'Proveedor demo S.L.', kind: 'COMPANY', roles: ['SUPPLIER'], company: 'KEI', currency: 'USD', account: '406' },
   { code: 'TRABAJADORA_DEMO', name: 'Trabajadora demo', kind: 'PERSON', roles: ['EMPLOYEE'], company: 'DM', currency: 'USD', account: '455' },
+  // Fase 4: exportación y distribución.
+  { code: 'CLIENTE_EXPORTACION_DEMO', name: 'Cliente exportación demo S.A.', kind: 'COMPANY', roles: ['CUSTOMER'], company: 'KEI', currency: 'USD', account: '136' },
+  { code: 'CLIENTE_DISTRIBUCION_DEMO', name: 'Cliente distribución demo', kind: 'PERSON', roles: ['CUSTOMER'], company: 'GR', currency: 'USD', account: '137' },
+  { code: 'VENDEDOR_DEMO', name: 'Vendedor demo', kind: 'PERSON', roles: ['SELLER'], company: 'GR', currency: 'USD', account: '410.9990' },
+  { code: 'VENDEDOR_DEMO', name: 'Vendedor demo', kind: 'PERSON', roles: ['SELLER'], company: 'KEI', currency: 'USD', account: '410.8880' },
+  { code: 'INVERSIONISTA_DEMO', name: 'Inversionista demo', kind: 'PERSON', roles: ['INVESTOR'], company: 'GR', currency: 'USD', account: '412' },
+  { code: 'PROVEEDOR_DISTRIBUCION_DEMO', name: 'Proveedor distribución demo', kind: 'COMPANY', roles: ['SUPPLIER'], company: 'GR', currency: 'USD', account: '406' },
 ];
 
 export async function seedDemoParties(prisma: PrismaClient) {

@@ -22,6 +22,8 @@ export interface BcRefRow {
 export interface ChartParseResult {
   accounts: (AccountSeedRow & { excelRow: number })[];
   references: BcRefRow[];
+  /** Totales de control del BC (ING/GAS/UT 777/888/999…) y las filas que suman. */
+  controls: { name: string; excelRow: number; rows: number[] }[];
   issues: string[];
   months: { col: number; year: number; month: number }[];
 }
@@ -60,6 +62,7 @@ export function parseChartOfAccounts(ws: ExcelJS.Worksheet): ChartParseResult {
 
   const accounts: ChartParseResult['accounts'] = [];
   const references: BcRefRow[] = [];
+  const controls: ChartParseResult['controls'] = [];
   let inControl = false;
 
   for (let r = 3; r <= ws.rowCount; r++) {
@@ -132,6 +135,10 @@ export function parseChartOfAccounts(ws: ExcelJS.Worksheet): ChartParseResult {
       inControl = true;
       if (!name) continue;
       fullCode = `CONTROL:${name}`;
+      // La primera columna de mes con fórmula (en abril algunas filas de control están vacías).
+      const formula = months.map((m) => readCell(ws, r, m.col).formula).find((f) => !!f) ?? null;
+      const rows = controlRows(formula);
+      if (rows) controls.push({ name, excelRow: r, rows });
     }
 
     for (const m of months) {
@@ -140,10 +147,26 @@ export function parseChartOfAccounts(ws: ExcelJS.Worksheet): ChartParseResult {
         issues.push(`Fila ${r} ${fullCode} ${m.month}/${m.year}: error ${c.error} en el Excel`);
         continue;
       }
+      // Los totales de control vacíos (abril) no se calculan en el Excel: sin valor de referencia.
+      if (fullCode.startsWith('CONTROL:') && (c.value === null || c.value === undefined) && !c.formula) continue;
       const n = typeof c.value === 'number' ? c.value : c.value === null ? 0 : Number(c.value);
       if (!Number.isFinite(n)) continue;
       references.push({ fullCode, excelRow: r, label: name ?? fullCode, year: m.year, month: m.month, valueUsd: n.toFixed(4) });
     }
   }
-  return { accounts, references, issues, months };
+  return { accounts, references, controls, issues, months };
+}
+
+/** Filas que suma un total de control: "=+H268+H270", "=SUBTOTAL(9,H314:H315)", "=SUM(H331:H332)". Null si cita otra hoja. */
+export function controlRows(formula: string | null): number[] | null {
+  if (!formula || formula.includes('!')) return null;
+  const f = formula.replace(/\$/g, '');
+  if (!/^[+\s]*(SUBTOTAL\(9,|SUM\()?[A-Z]+\d+(:[A-Z]+\d+)?([+,][A-Z]+\d+(:[A-Z]+\d+)?)*\)?$/.test(f)) return null;
+  const rows: number[] = [];
+  for (const m of f.matchAll(/[A-Z]+(\d+)(?::[A-Z]+(\d+))?/g)) {
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : a;
+    for (let r = a; r <= b; r++) rows.push(r);
+  }
+  return rows;
 }

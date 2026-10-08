@@ -48,7 +48,7 @@ export async function importBcReference(prisma: PrismaClient, w: Workbook, file:
   const batch = await prisma.importBatch.create({
     data: {
       sourceFile: basename(file), fileHash: w.hash, tableName: 'BC:referencia',
-      stats: { values: parsed.references.length, months: parsed.months.map((m) => `${m.month}/${m.year}`) },
+      stats: { values: parsed.references.length, months: parsed.months.map((m) => `${m.month}/${m.year}`), controls: parsed.controls },
     },
   });
   await prisma.bcReference.createMany({ data: parsed.references.map((r) => ({ ...r, importId: batch.id })) });

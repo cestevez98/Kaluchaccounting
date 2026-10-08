@@ -36,6 +36,8 @@ model Company {
   treasuryAccounts TreasuryAccount[]
   documents        Document[]
   partyAccounts    PartyAccount[]
+  exportInvoices   ExportInvoice[]
+  containers       Container[]
 
   @@map("company")
 }
@@ -459,6 +461,10 @@ model Document {
 
   treasuryMovement TreasuryMovement?
   partyDocument    PartyDocument?
+  exportIssue      ExportInvoice?      @relation("ExportInvoiceIssue")
+  exportClose      ExportInvoice?      @relation("ExportInvoiceClose")
+  salesInvoice     SalesInvoice?
+  inventoryMoves   InventoryMovement[]
 
   @@unique([companyId, number])
   @@index([companyId, docDate])
@@ -772,9 +778,14 @@ model PartyAccount {
   active            Boolean  @default(true)
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  documents  PartyDocument[]
-  openItems  OpenItem[]
-  categories CashCategory[]
+  documents          PartyDocument[]
+  openItems          OpenItem[]
+  categories         CashCategory[]
+  exportInvoices     ExportInvoice[]     @relation("ExportInvoiceCustomer")
+  exportCommissions  ExportInvoice[]     @relation("ExportInvoiceSeller")
+  containerInvestors ContainerInvestor[]
+  salesInvoices      SalesInvoice[]
+  salesCommissions   SalesLine[]         @relation("SalesLineSeller")
 
   @@unique([companyId, partyId, currency, accountId])
   @@index([partyId])
@@ -927,4 +938,194 @@ model SignReclassRun {
 
   @@index([companyId, year, month])
   @@map("sign_reclass_run")
+}
+
+// ───────────────────────── Fase 4: exportación y distribución ─────────────────────────
+
+enum ExportService {
+  GOODS
+  SERVICES
+}
+
+enum SalesDocStatus {
+  PENDING
+  CLOSED
+  POSTED
+  CANCELLED
+}
+
+/// Factura de exportación (segmento 888). Al emitirla queda pendiente (2900 / 2814–2816 contra el cliente y
+/// las mercancías 180.888x); al cerrarla pasa a ventas y costos (900/901 y 814–817, o 1900/1814–1817 si el
+/// cliente es interno).
+model ExportInvoice {
+  id                   String         @id @default(uuid(7)) @db.Uuid
+  companyId            String         @map("company_id") @db.Uuid
+  company              Company        @relation(fields: [companyId], references: [id])
+  /// Cuenta corriente del cliente (136).
+  partyAccountId       String         @map("party_account_id") @db.Uuid
+  partyAccount         PartyAccount   @relation("ExportInvoiceCustomer", fields: [partyAccountId], references: [id])
+  /// Vendedor que cobra comisión (410.8880).
+  sellerPartyAccountId String?        @map("seller_party_account_id") @db.Uuid
+  sellerPartyAccount   PartyAccount?  @relation("ExportInvoiceSeller", fields: [sellerPartyAccountId], references: [id])
+  number               String
+  invoiceDate          DateTime       @map("invoice_date") @db.Date
+  closeDate            DateTime?      @map("close_date") @db.Date
+  service              ExportService
+  /// Cliente interno del grupo (MPM Grupo Roca, MPM Dmilio, Palco): ventas internas 1900 y costos 18xx.
+  internal             Boolean        @default(false)
+  description          String
+  amountUsd            Decimal        @map("amount_usd") @db.Decimal(18, 4)
+  factoryUsd           Decimal        @default(0) @map("factory_usd") @db.Decimal(18, 4)
+  logisticsUsd         Decimal        @default(0) @map("logistics_usd") @db.Decimal(18, 4)
+  otherUsd             Decimal        @default(0) @map("other_usd") @db.Decimal(18, 4)
+  estimatedUsd         Decimal        @default(0) @map("estimated_usd") @db.Decimal(18, 4)
+  commissionUsd        Decimal        @default(0) @map("commission_usd") @db.Decimal(18, 4)
+  status               SalesDocStatus @default(PENDING)
+  issueDocumentId      String         @unique @map("issue_document_id") @db.Uuid
+  issueDocument        Document       @relation("ExportInvoiceIssue", fields: [issueDocumentId], references: [id])
+  closeDocumentId      String?        @unique @map("close_document_id") @db.Uuid
+  closeDocument        Document?      @relation("ExportInvoiceClose", fields: [closeDocumentId], references: [id])
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  createdBy            String?        @map("created_by") @db.Uuid
+
+  @@unique([companyId, number])
+  @@index([status])
+  @@map("export_invoice")
+}
+
+model Product {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  code      String   @unique
+  name      String
+  unit      String   @default("u")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  movements InventoryMovement[]
+  saleLines SalesLine[]
+
+  @@map("product")
+}
+
+enum ContainerStatus {
+  TRANSIT
+  WAREHOUSE
+  CLOSED
+}
+
+enum InventoryLocation {
+  TRANSIT
+  WAREHOUSE
+}
+
+enum InventoryMoveKind {
+  COST
+  RECEIPT
+  SALE
+  ADJUSTMENT
+}
+
+/// Contenedor de distribución (segmento 999): lote de mercancía con sus costos, inversionistas y utilidad.
+model Container {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  companyId   String          @map("company_id") @db.Uuid
+  company     Company         @relation(fields: [companyId], references: [id])
+  code        String
+  description String          @default("")
+  status      ContainerStatus @default(TRANSIT)
+  arrivalDate DateTime?       @map("arrival_date") @db.Date
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  investors ContainerInvestor[]
+  movements InventoryMovement[]
+  saleLines SalesLine[]
+
+  @@unique([companyId, code])
+  @@map("container")
+}
+
+/// Participación de un inversionista en un contenedor: % del capital invertido y % de la utilidad.
+model ContainerInvestor {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  containerId    String       @map("container_id") @db.Uuid
+  container      Container    @relation(fields: [containerId], references: [id])
+  partyAccountId String       @map("party_account_id") @db.Uuid
+  partyAccount   PartyAccount @relation(fields: [partyAccountId], references: [id])
+  investedUsd    Decimal      @default(0) @map("invested_usd") @db.Decimal(18, 4)
+  profitPct      Decimal      @map("profit_pct") @db.Decimal(9, 4)
+
+  @@unique([containerId, partyAccountId])
+  @@map("container_investor")
+}
+
+/// Kardex: entradas (costos y recepción), salidas por venta y ajustes, por producto, contenedor (lote) y ubicación.
+/// Cantidad e importe con signo (+ entra / − sale).
+model InventoryMovement {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  companyId   String            @map("company_id") @db.Uuid
+  containerId String            @map("container_id") @db.Uuid
+  container   Container         @relation(fields: [containerId], references: [id])
+  /// Null en los costos del contenedor aún sin repartir por producto (en tránsito).
+  productId   String?           @map("product_id") @db.Uuid
+  product     Product?          @relation(fields: [productId], references: [id])
+  date        DateTime          @db.Date
+  kind        InventoryMoveKind
+  location    InventoryLocation
+  quantity    Decimal           @default(0) @db.Decimal(18, 4)
+  amountUsd   Decimal           @map("amount_usd") @db.Decimal(18, 4)
+  description String
+  documentId  String            @map("document_id") @db.Uuid
+  document    Document          @relation(fields: [documentId], references: [id])
+  salesLineId String?           @unique @map("sales_line_id") @db.Uuid
+  salesLine   SalesLine?        @relation(fields: [salesLineId], references: [id])
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([containerId, productId])
+  @@index([productId, date])
+  @@map("inventory_movement")
+}
+
+/// Factura de venta de distribución: ingreso, costo identificado por lote, comisiones del vendedor y ONAT.
+model SalesInvoice {
+  id               String         @id @db.Uuid
+  document         Document       @relation(fields: [id], references: [id])
+  /// Cuenta corriente del cliente (137); null en ventas al contado contra la cuenta indicada.
+  partyAccountId   String?        @map("party_account_id") @db.Uuid
+  partyAccount     PartyAccount?  @relation(fields: [partyAccountId], references: [id])
+  counterAccountId String?        @map("counter_account_id") @db.Uuid
+  totalUsd         Decimal        @map("total_usd") @db.Decimal(18, 4)
+  costUsd          Decimal        @map("cost_usd") @db.Decimal(18, 4)
+  commissionUsd    Decimal        @map("commission_usd") @db.Decimal(18, 4)
+  onatUsd          Decimal        @map("onat_usd") @db.Decimal(18, 4)
+  onatRate         Decimal        @map("onat_rate") @db.Decimal(9, 6)
+  status           SalesDocStatus @default(POSTED)
+
+  lines SalesLine[]
+
+  @@map("sales_invoice")
+}
+
+model SalesLine {
+  id                   String        @id @default(uuid(7)) @db.Uuid
+  invoiceId            String        @map("invoice_id") @db.Uuid
+  invoice              SalesInvoice  @relation(fields: [invoiceId], references: [id])
+  productId            String        @map("product_id") @db.Uuid
+  product              Product       @relation(fields: [productId], references: [id])
+  containerId          String        @map("container_id") @db.Uuid
+  container            Container     @relation(fields: [containerId], references: [id])
+  quantity             Decimal       @db.Decimal(18, 4)
+  unitPriceUsd         Decimal       @map("unit_price_usd") @db.Decimal(18, 4)
+  amountUsd            Decimal       @map("amount_usd") @db.Decimal(18, 4)
+  costUsd              Decimal       @map("cost_usd") @db.Decimal(18, 4)
+  commissionPerUnitUsd Decimal       @default(0) @map("commission_per_unit_usd") @db.Decimal(18, 4)
+  commissionUsd        Decimal       @default(0) @map("commission_usd") @db.Decimal(18, 4)
+  sellerPartyAccountId String?       @map("seller_party_account_id") @db.Uuid
+  sellerPartyAccount   PartyAccount? @relation("SalesLineSeller", fields: [sellerPartyAccountId], references: [id])
+  onatUsd              Decimal       @default(0) @map("onat_usd") @db.Decimal(18, 4)
+
+  movement InventoryMovement?
+
+  @@index([containerId])
+  @@index([sellerPartyAccountId])
+  @@map("sales_line")
 }

@@ -32,6 +32,12 @@ export interface LinearForm {
 
 export class UnsupportedFormula extends Error {}
 
+/** Valor de una celda del BC (columna en letras y fila), para criterios que la citan. */
+export type CellValue = (col: string, row: number) => unknown;
+
+/** Columna de las "tablas" de fila entera (Capital!20): "@fila:N" es el valor de la fila N de la hoja. */
+export const ROW_PREFIX = '@fila:';
+
 type Node =
   | { t: 'num'; v: number }
   | { t: 'str'; v: string }
@@ -74,6 +80,15 @@ function tokenize(src: string): Tok[] {
     }
     if ('+-*/&='.includes(c)) { out.push({ k: 'op', v: c }); i++; continue; }
     if (c === '(' || c === ')' || c === ',') { out.push({ k: c, v: c }); i++; continue; }
+    // Fila entera de otra hoja: Capital!20:20, 'Hoja con espacios'!$1:$1.
+    const rowRef = /^(?:'([^']+)'|([A-Za-z_À-ÿ][A-Za-z0-9_À-ÿ.]*))!\$?(\d+):\$?(\d+)/.exec(src.slice(i));
+    if (rowRef) {
+      if (rowRef[3] !== rowRef[4]) throw new UnsupportedFormula('Rango de varias filas');
+      const sheet = rowRef[1] ?? rowRef[2]!;
+      out.push({ k: 'sref', v: `${ROW_PREFIX}${rowRef[3]}`, table: sheet });
+      i += rowRef[0].length;
+      continue;
+    }
     // Identificador, referencia de celda o referencia estructurada Tabla[Columna].
     const m = /^[$]?[A-Za-z_À-ÿ\\][A-Za-z0-9_À-ÿ.\\]*[$]?[0-9]*/.exec(src.slice(i));
     if (!m) throw new UnsupportedFormula(`Carácter inesperado "${c}"`);
@@ -190,9 +205,10 @@ const EMPTY: LinearForm = { terms: [], split: false, rateColumn: null };
 
 /**
  * Linealiza la fórmula de una celda del BC. `cellFormula(row)` devuelve la fórmula de otra fila
- * en la misma columna (para resolver referencias como G133).
+ * en la misma columna (para resolver referencias como G133); `cellValue` el valor de una celda citada
+ * como criterio.
  */
-export function linearize(formula: string, cellFormula: (row: number) => string | null, depth = 0): LinearForm {
+export function linearize(formula: string, cellFormula: (row: number) => string | null, depth = 0, cellValue?: CellValue): LinearForm {
   if (depth > 5) throw new UnsupportedFormula('Demasiadas referencias anidadas');
   const lin = (n: Node): LinearForm => {
     switch (n.t) {
@@ -204,7 +220,7 @@ export function linearize(formula: string, cellFormula: (row: number) => string 
       case 'cell': {
         if (n.row <= 2) throw new UnsupportedFormula('Referencia a la cabecera');
         const f = cellFormula(n.row);
-        return f ? linearize(f, cellFormula, depth + 1) : EMPTY;
+        return f ? linearize(f, cellFormula, depth + 1, cellValue) : EMPTY;
       }
       case 'bin':
         if (n.op === '+') return combine(lin(n.l), lin(n.r));
@@ -226,7 +242,7 @@ export function linearize(formula: string, cellFormula: (row: number) => string 
           throw new UnsupportedFormula('IF sin rama 0');
         }
         if (n.name === 'IFERROR') return lin(n.args[0]!);
-        if (n.name === 'SUMIFS') return { terms: [sumifsTerm(n)], split: false, rateColumn: null };
+        if (n.name === 'SUMIFS') return { terms: [sumifsTerm(n, cellValue)], split: false, rateColumn: null };
         throw new UnsupportedFormula(`Función ${n.name} no soportada`);
       default:
         throw new UnsupportedFormula(`Elemento ${n.t} no lineal`);
@@ -235,11 +251,13 @@ export function linearize(formula: string, cellFormula: (row: number) => string 
   return lin(parse(formula));
 }
 
-function sumifsTerm(n: Extract<Node, { t: 'call' }>): LinearTerm {
+function sumifsTerm(n: Extract<Node, { t: 'call' }>, cellValue?: CellValue): LinearTerm {
   const [sum, ...rest] = n.args;
   if (sum?.t !== 'sref') throw new UnsupportedFormula('SUMIFS sin columna de suma');
   if (sum.table === 'Tasas') throw new UnsupportedFormula('Tasa fuera de una división');
-  const term: LinearTerm = { coef: 1, sheet: sum.table, column: sum.column, dateColumn: null, monthly: false, criteria: [] };
+  // Filas enteras de una hoja: la "tabla" es la fila sumada (Capital!20) y sus columnas son las filas de la hoja.
+  const sheet = sum.column.startsWith(ROW_PREFIX) ? `${sum.table}!${sum.column.slice(ROW_PREFIX.length)}` : sum.table;
+  const term: LinearTerm = { coef: 1, sheet, column: sum.column, dateColumn: null, monthly: false, criteria: [] };
   for (let i = 0; i + 1 < rest.length; i += 2) {
     const range = rest[i]!;
     const crit = rest[i + 1]!;
@@ -251,16 +269,60 @@ function sumifsTerm(n: Extract<Node, { t: 'call' }>): LinearTerm {
       else throw new UnsupportedFormula(`Criterio de fecha "${op}" no soportado`);
       continue;
     }
-    if (crit.t === 'str') term.criteria.push({ column: range.column, value: crit.v });
-    else if (crit.t === 'num') term.criteria.push({ column: range.column, value: String(crit.v) });
-    else throw new UnsupportedFormula('Criterio no literal');
+    const value = literal(crit, cellValue);
+    if (value === null) throw new UnsupportedFormula('Criterio no literal');
+    term.criteria.push({ column: range.column, value });
   }
-  if (!term.dateColumn) throw new UnsupportedFormula(`SUMIFS de ${sum.table}[${sum.column}] sin fecha de corte`);
+  // Sin fecha de corte: el Excel suma todas las filas (estado actual, p. ej. ventas pendientes de exportar).
   return term;
 }
 
-/** Criterio de SUMIFS con operadores de comparación de texto ("<>X"). */
+/**
+ * Valor constante de un criterio: texto, número, concatenación de literales ("<>"&"*Doping*", "<="&0) o una
+ * celda del BC con un valor fijo ($A239: el nombre de la cuenta).
+ */
+function literal(n: Node, cellValue?: CellValue): string | null {
+  if (n.t === 'str') return n.v;
+  if (n.t === 'num') return String(n.v);
+  if (n.t === 'neg' && n.x.t === 'num') return String(-n.x.v);
+  if (n.t === 'cell' && cellValue) {
+    const v = cellValue(n.col, n.row);
+    return v === null || v === undefined ? null : String(v);
+  }
+  if (n.t === 'bin' && n.op === '&') {
+    const l = literal(n.l, cellValue);
+    const r = literal(n.r, cellValue);
+    return l === null || r === null ? null : l + r;
+  }
+  return null;
+}
+
+function cellNumber(cell: unknown): number | null {
+  if (typeof cell === 'number') return cell;
+  if (cell instanceof Date) return cell.getTime() / 86_400_000 + 25569;
+  return null;
+}
+
+/**
+ * Criterio de SUMIFS como Excel: comparación numérica ("<=0", ">5"), distinto ("<>X", "<>" = no vacío),
+ * igual ("=X") o texto con comodines. Un número en el criterio también coincide con el número de la celda.
+ */
 export function criterionMatches(cell: unknown, criterion: string): boolean {
+  const cmp = /^(<=|>=|<>|<|>|=)?(-?\d+(?:\.\d+)?)$/.exec(criterion);
+  if (cmp) {
+    const n = cellNumber(cell);
+    const v = Number(cmp[2]);
+    const op = cmp[1] ?? '=';
+    if (n === null) return op === '<>' ? true : op === '=' && !cmp[1] ? excelCriterionMatches(cell, criterion) : false;
+    switch (op) {
+      case '<=': return n <= v;
+      case '>=': return n >= v;
+      case '<': return n < v;
+      case '>': return n > v;
+      case '<>': return n !== v;
+      default: return n === v;
+    }
+  }
   if (criterion.startsWith('<>')) return !excelCriterionMatches(cell, criterion.slice(2));
   if (criterion.startsWith('=')) return excelCriterionMatches(cell, criterion.slice(1));
   return excelCriterionMatches(cell, criterion);

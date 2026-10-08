@@ -18,7 +18,7 @@ type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 interface Step { key: string; label: string; args: string[]; status: StepStatus; startedAt: string | null; finishedAt: string | null }
 interface ImportJob {
   status: 'running' | 'done' | 'error';
-  mode: 'full' | 'rates';
+  mode: 'full' | 'sales' | 'rates';
   fileName: string;
   startedBy: string;
   startedAt: string;
@@ -37,6 +37,14 @@ const STEPS: Record<ImportJob['mode'], { key: string; label: string; args: (file
     { key: 'all', label: 'Plan de cuentas, tasas y valores del BC', args: (f) => ['all', f] },
     { key: 'treasury', label: 'Caja y bancos (apertura y movimientos)', args: (f) => ['treasury', f, '--revalue-until='] },
     { key: 'debts', label: 'Deudas, proveedores y nómina; revaluaciones y cierres abril–octubre', args: (f) => ['debts', f] },
+    { key: 'sales', label: 'Exportación, distribución, inventario, ventas, costos y gastos', args: (f) => ['sales', f] },
+    { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
+    { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
+  ],
+  // Fase 4 sobre una base que ya tiene migradas las fases 1–3: actualiza el plan de cuentas y los valores del BC.
+  sales: [
+    { key: 'all', label: 'Plan de cuentas, tasas y valores del BC (actualización)', args: (f) => ['all', f] },
+    { key: 'sales', label: 'Exportación, distribución, inventario, ventas, costos y gastos', args: (f) => ['sales', f] },
     { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
     { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
   ],
@@ -110,26 +118,28 @@ export class ImportController {
   @Get()
   @RequirePermission('admin:settings')
   async state() {
-    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch] = await Promise.all([
+    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch, debts, sales] = await Promise.all([
       this.prisma.account.count(), this.prisma.exchangeRate.count(), this.prisma.treasuryMovement.count(),
       this.prisma.partyDocument.count(), this.prisma.importBatch.findFirst({ orderBy: { createdAt: 'desc' } }),
+      this.prisma.importBatch.count({ where: { tableName: 'Deudas' } }), this.prisma.importBatch.count({ where: { tableName: 'Ventas' } }),
     ]);
     return {
       // Sin los argumentos internos (ruta del archivo temporal).
       job: job ? { ...job, steps: job.steps.map(({ args: _args, ...s }) => s) } : null,
-      data: { accounts, rates, treasuryMovements, partyDocuments, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
+      data: { accounts, rates, treasuryMovements, partyDocuments, phases: { debts: debts > 0, sales: sales > 0 }, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
     };
   }
 
   /**
    * Sube el Excel y lanza la migración en segundo plano. "full": migración completa (solo sobre una base
-   * sin tesorería ni deudas importadas). "rates": solo actualiza las tasas de cambio.
+   * sin tesorería ni deudas importadas). "sales": añade la fase 4 a una base con las fases 1–3. "rates": solo
+   * actualiza las tasas de cambio.
    */
   @Post()
   @RequirePermission('admin:settings')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 60 * 1024 * 1024 } }))
   async start(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @Body() body: unknown) {
-    const b = parse(z.object({ mode: z.enum(['full', 'rates']).default('full') }), body);
+    const b = parse(z.object({ mode: z.enum(['full', 'sales', 'rates']).default('full') }), body);
     if (job?.status === 'running') throw new ConflictException({ code: 'IMPORT_RUNNING', message: 'Ya hay una importación en curso' });
     if (!file) throw new BadRequestException({ code: 'VALIDATION', message: 'Adjunta el archivo Excel (.xlsx)' });
     if (!/\.xlsx$/i.test(file.originalname) || file.buffer.subarray(0, 2).toString('latin1') !== 'PK') {
@@ -143,6 +153,13 @@ export class ImportController {
           message: 'La base ya tiene movimientos de tesorería o documentos de contrapartes: la migración completa solo se hace una vez, sobre una base vacía',
         });
       }
+    }
+    if (b.mode === 'sales') {
+      const [debts, sales] = await Promise.all([
+        this.prisma.importBatch.findFirst({ where: { tableName: 'Deudas' } }), this.prisma.importBatch.findFirst({ where: { tableName: 'Ventas' } }),
+      ]);
+      if (!debts) throw new ConflictException({ code: 'PHASE_MISSING', message: 'Primero hay que migrar tesorería y deudas (migración completa)' });
+      if (sales) throw new ConflictException({ code: 'ALREADY_IMPORTED', message: 'La migración de exportación y distribución ya se hizo en esta base' });
     }
     // El nombre original queda en el historial de importaciones (sin caracteres raros).
     const safe = file.originalname.normalize('NFD').replace(/[^\w.-]+/g, '_').slice(-80);

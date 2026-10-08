@@ -207,12 +207,19 @@ export async function voidTreasuryMovement(tx: Tx, id: string, opts: { createdBy
 export async function reclassifyMovement(
   tx: Tx,
   id: string,
-  opts: { accountId: string; categoryId?: string | null; partyId?: string | null; note?: string; userId?: string | null },
+  opts: {
+    accountId: string; categoryId?: string | null; partyId?: string | null; note?: string; userId?: string | null;
+    /** Permite reclasificar un movimiento ya clasificado (migración). */
+    allowResolved?: boolean;
+  },
 ) {
   const m = await tx.treasuryMovement.findUnique({ where: { id }, include: { document: true } });
   if (!m || !m.entryId) throw new LedgerError('NOT_FOUND', 'Movimiento no encontrado');
-  if (!m.needsReview) throw new LedgerError('INVALID_INPUT', `El movimiento ${m.document.number} no está pendiente de revisión`);
-  const lines = await tx.journalLine.findMany({ where: { entryId: m.entryId, accountId: m.counterAccountId ?? undefined } });
+  if (!m.needsReview && !opts.allowResolved) throw new LedgerError('INVALID_INPUT', `El movimiento ${m.document.number} no está pendiente de revisión`);
+  // Importe en la contrapartida actual: el asiento del movimiento y, si ya se reclasificó, sus reclasificaciones.
+  const lines = await tx.journalLine.findMany({
+    where: { accountId: m.counterAccountId ?? undefined, OR: [{ entryId: m.entryId }, { entry: { documentId: m.id } }] },
+  });
   const amountUsd = roundAmount(sum(lines.map((l) => l.amountUsd)));
   if (!amountUsd.isZero()) {
     const period = await tx.fiscalPeriod.findUnique({

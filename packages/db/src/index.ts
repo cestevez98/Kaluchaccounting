@@ -15,3 +15,4 @@ export * from './system-accounts';
 export type { CategoryKind, MovementKind, TreasuryKind, PartyDocKind, PartyRole, OpenItemSide } from '@prisma/client';
 export * from './bank';
 export * from './parties';
+export * from './sales';

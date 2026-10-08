@@ -22,12 +22,52 @@ import type ExcelJS from 'exceljs';
 import { basename } from 'node:path';
 import { slug } from './categories';
 import { TREASURY_SHEETS } from './treasury-import';
-import { criterionMatches, isNegationOf, isSameForm, linearize, normalize, UnsupportedFormula, type LinearForm, type LinearTerm } from './linear';
+import { criterionMatches, isNegationOf, isSameForm, linearize, normalize, ROW_PREFIX, UnsupportedFormula, type LinearForm, type LinearTerm } from './linear';
 import { asIsoDate, asString, excelNumber, readCell, type loadWorkbook } from './workbook';
 
 type Workbook = Awaited<ReturnType<typeof loadWorkbook>>;
 
 export const DEBT_CODES = ['135', '146', '405', '406', '407', '408', '409', '410', '411', '412', '413', '455', '699', '845', '924'];
+
+/**
+ * Fase 4: exportación, distribución, inventario, ventas, costos y gastos e ingresos de operación (todas las
+ * cuentas de resultados que suman los totales de control ING/GAS 777/888/999, salvo las de cambios y tenencia,
+ * que ya migran tesorería y deudas).
+ */
+export const SALES_CODES = [
+  '136', '137', '139', '180', '181', '1181', '430', '800', '814', '815', '816', '817', '818', '819', '820', '821', '822', '823', '824',
+  '825', '826', '827', '828', '829', '830', '831', '832', '833', '834', '835', '836', '837', '838', '839', '840', '841', '842', '843',
+  '844', '847', '848', '849', '900', '901', '920', '921', '926', '930', '1900', '1814', '1815', '1816', '1817', '2900', '2814', '2815', '2816',
+];
+
+export interface BcScope {
+  /** Nombre del lote de importación (una sola vez por base). */
+  name: string;
+  codes: string[];
+  /** Pasos propios de la migración de deudas (partidas abiertas, bandeja → puente, cierres mensuales). */
+  debts: boolean;
+}
+export const DEBTS_SCOPE: BcScope = { name: 'Deudas', codes: DEBT_CODES, debts: true };
+export const SALES_SCOPE: BcScope = { name: 'Ventas', codes: SALES_CODES, debts: false };
+
+/** Cuentas que se llevan por contraparte (cuenta corriente); el resto se contabiliza sin ella. */
+const PARTY_CODE = /^(135|136|137|138|139|146|405|406|407|408|409|410|411|412|413|430|455|699)(\.|$)/;
+
+/** Fecha para los términos del Excel sin fecha de corte (estado actual): la de la fila. */
+const UNDATED_DATE: Record<string, string> = {
+  Exportación_Facturas: 'Fecha de facturación',
+  Deuda_Proveedores: 'Fecha',
+  Deuda_Coprove: 'Fecha',
+};
+
+/** Empresa por defecto de las tablas sin columna Empresa. */
+const TABLE_COMPANY: Record<string, string> = {
+  Distribución_Facturación: 'GR', Distribución_Crédito: 'GR', Distribución_Costos: 'GR', Distribución_Comisiones: 'GR',
+  Distribución_Inversionistas: 'GR', Distribución_Inv_Cobros: 'GR', Distribución_Inv_Pagos: 'GR', Distribución_Utilidad: 'GR',
+  Deuda_Clientes_Jorge_Facturas: 'GR', Deuda_Clientes_Jorge_Pagos: 'GR', Proyectos_Facturación: 'GR',
+  // Hoja Capital (filas de ingresos por inversión de los mercados de Distribución).
+  Capital: 'GR',
+};
 
 /** Columna de la que sale la contraparte en las tablas de cuentas compartidas. */
 const PARTY_COLUMNS: Record<string, Record<string, string>> = {
@@ -43,6 +83,12 @@ const PARTY_COLUMNS: Record<string, Record<string, string>> = {
   RRHH_Nómina_Pagos: { '*': '@nomina' },
   Deuda_CxC_generales: { 'A cobrar USD': 'Nombre', 'Cobrado USD': 'Nombre_2' },
   Deuda_CxP_generales: { 'A pagar USD': 'Nombre', 'Pagado USD': 'Nombre_2' },
+  Exportación_Facturas: { '*': 'CLIENTE ' },
+  Exportación_Cobros: { '*': 'Cliente' },
+  Distribución_Crédito: { '*': 'Cliente ' },
+  Distribución_Inv_Cobros: { '*': 'Inversionista' },
+  Deuda_Clientes_Jorge_Facturas: { '*': 'NOMBRE' },
+  Deuda_Clientes_Jorge_Pagos: { '*': 'CLIENTE' },
 };
 
 /** Contraparte fija de las cuentas dedicadas cuyo nombre no la deja clara. */
@@ -64,6 +110,8 @@ const DEBT_CATEGORY = /^(DEUDA|RRHH$|FINANCIAMIENTOS$|INVERSIONES$|COMISION_DIST
 
 function roleFor(code: string): PartyRole {
   if (code.startsWith('455')) return 'EMPLOYEE';
+  if (/^(136|137|430)/.test(code)) return 'CUSTOMER';
+  if (code.startsWith('139')) return 'INVESTOR';
   if (code.startsWith('410')) return 'SELLER';
   if (code.startsWith('411')) return 'LENDER';
   if (code.startsWith('412')) return 'INVESTOR';
@@ -102,6 +150,26 @@ function tableIndex(wb: ExcelJS.Workbook) {
 
 function colNumber(letters: string) {
   return letters.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+}
+
+/**
+ * "Tabla" de una fila entera de una hoja (Capital!20): una fila por columna, con el valor de cada fila de la hoja
+ * que citan los términos ("@fila:20", "@fila:1" con las fechas…).
+ */
+function readRowTable(wb: ExcelJS.Workbook, name: string, terms: LinearTerm[]): TableData | null {
+  const [sheetName, row] = name.split('!') as [string, string];
+  const ws = wb.getWorksheet(sheetName);
+  if (!ws) return null;
+  const keys = new Set(terms.flatMap((t) => [t.column, t.dateColumn, ...t.criteria.map((c) => c.column)]).filter((k): k is string => !!k?.startsWith(ROW_PREFIX)));
+  const sumKey = `${ROW_PREFIX}${row}`;
+  const rows: TableData['rows'] = [];
+  for (let c = 1; c <= ws.columnCount; c++) {
+    const values: Record<string, unknown> = {};
+    for (const k of keys) values[k] = readCell(ws, Number(k.slice(ROW_PREFIX.length)), c).value;
+    if (values[sumKey] === null || values[sumKey] === undefined || values[sumKey] === '') continue;
+    rows.push({ excelRow: c, values });
+  }
+  return { name, sheet: name, rows };
 }
 
 function readTable(idx: ReturnType<typeof tableIndex>, name: string): TableData | null {
@@ -143,8 +211,16 @@ interface Target {
   currency: string;
   /** Contraparte fija (cuentas dedicadas) o null (sale de cada fila). */
   fixedParty: string | null;
-  /** Cuenta de resultados: se contabiliza sin cuenta corriente (p. ej. 845.8880 diferencia en pagos a Coprove). */
+  /** Cuenta de resultados (no arrastra saldo de meses anteriores a la apertura). */
   nominal: boolean;
+  /** Sin contraparte (resultados, inventario): asiento de migración contra el puente. */
+  plain: boolean;
+  /**
+   * Estado actual: todos los términos sin fecha de corte (facturas pendientes de cierre, facturas de proveedor
+   * sin asignar). El Excel muestra el mismo valor en todos los meses; aquí cada fila va en su fecha y el saldo
+   * se arrastra (también antes de la apertura), así que el acumulado coincide con el Excel.
+   */
+  state: boolean;
 }
 
 export interface DebtImportOptions {
@@ -155,6 +231,8 @@ export interface DebtImportOptions {
   revalueFrom: string;
   revalueUntil: string | null;
   log?: (msg: string) => void;
+  /** Alcance (por defecto, deudas). */
+  scope?: BcScope;
 }
 
 interface Contribution {
@@ -171,9 +249,18 @@ interface Contribution {
   values: Record<string, unknown>;
 }
 
+/** Fase 4: exportación y distribución (tras la de deudas). */
+export function importSales(prisma: PrismaClient, w: Workbook, file: string, opts: DebtImportOptions) {
+  return importDebts(prisma, w, file, { ...opts, scope: SALES_SCOPE });
+}
+
 export async function importDebts(prisma: PrismaClient, w: Workbook, file: string, opts: DebtImportOptions) {
   const log = opts.log ?? (() => {});
-  if ((await prisma.partyDocument.count()) > 0) {
+  const scope = opts.scope ?? DEBTS_SCOPE;
+  if (await prisma.importBatch.findFirst({ where: { tableName: scope.name } })) {
+    throw new Error(`La migración "${scope.name}" ya se hizo en esta base: se ejecuta una sola vez`);
+  }
+  if (scope.debts && (await prisma.partyDocument.count()) > 0) {
     throw new Error('Ya hay documentos de contrapartes en esta base: la migración de deudas se ejecuta una sola vez tras la de tesorería');
   }
   const issues: string[] = [];
@@ -190,7 +277,9 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   if (!bc) throw new Error('No se encuentra la hoja BC');
   let col = 7;
   for (let c = 7; c <= bc.columnCount; c++) if (Number(readCell(bc, 2, c).value) >= 1) { col = c; break; }
-  const accounts = await prisma.account.findMany({ where: { code: { in: DEBT_CODES }, postable: true } });
+  const accounts = await prisma.account.findMany({ where: { code: { in: scope.codes }, postable: true } });
+  /** Términos que suman filas de tesorería: sus movimientos ya existen (bandeja) y se reclasifican a la cuenta. */
+  const trayRules: { accountId: string; code: string; terms: LinearTerm[] }[] = [];
   const byRow = new Map(accounts.map((a) => [a.sortOrder, a]));
   const forms: { acc: (typeof accounts)[number]; form: LinearForm }[] = [];
   for (let r = 3; r <= bc.rowCount; r++) {
@@ -199,9 +288,15 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
     const f = readCell(bc, r, col).formula;
     if (!f) continue;
     try {
-      const form = normalize(linearize(f, (row) => readCell(bc, row, col).formula ?? null));
-      // Las cuentas de tesorería (845/924 de cambios y traspasos) ya salen de la migración de tesorería.
-      if (form.terms.some((t) => (TREASURY_SHEETS as readonly string[]).includes(t.sheet))) continue;
+      const form = normalize(linearize(f, (row) => readCell(bc, row, col).formula ?? null, 0, (c, row) => readCell(bc, row, colNumber(c)).value));
+      const isTreasury = (t: LinearTerm) => (TREASURY_SHEETS as readonly string[]).includes(t.sheet);
+      if (form.terms.some(isTreasury)) {
+        // Deudas: las 845/924 de cambios y traspasos ya salen de la migración de tesorería.
+        if (scope.debts) continue;
+        // Ventas y gastos: las filas de caja y bancos ya son movimientos; se reclasifican desde la bandeja.
+        trayRules.push({ accountId: acc.id, code: acc.displayCode, terms: form.terms.filter(isTreasury) });
+        form.terms = form.terms.filter((t) => !isTreasury(t));
+      }
       const nominal = acc.classification === 'CND' || acc.classification === 'CNA';
       if (form.terms.some((t) => t.monthly) && !nominal) {
         issues.push(`${acc.displayCode}: fórmula de importes del mes en una cuenta de balance; no se migran filas`);
@@ -228,17 +323,23 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
         issues.push(`${acc.displayCode}: saldo partido por signo sin cuenta opuesta; se migra como cuenta simple`);
       }
     }
-    // En un par la cuenta principal es la de activo (135.x, 146.0002); su forma da el importe.
-    const main = opposite && acc.classification !== 'AC' && opposite.acc.classification === 'AC' ? opposite : { acc, form };
+    // En un par la cuenta principal es la de activo (135.x, 146.0002); su forma da el importe. En un par de
+    // resultados con formas opuestas (847.9991 "−S si S<0" / 926.9991 "S si S>0") manda la de ingresos: la de
+    // gastos muestra el importe en positivo, con el signo contrario al del resto del BC.
+    const nominalNegation = opposite && opposite.acc.classification === 'CNA' && acc.classification === 'CND' && isNegationOf(opposite.form, form);
+    const main = opposite && ((acc.classification !== 'AC' && opposite.acc.classification === 'AC') || nominalNegation) ? opposite : { acc, form };
     const other = main.acc.id === acc.id ? opposite : { acc, form };
     used.add(acc.id);
     if (opposite) used.add(opposite.acc.id);
     const currency = /^([A-Z]{3})\//.exec(main.form.rateColumn ?? '')?.[1] ?? 'USD';
     const sharedByRow = main.form.terms.every((t) => PARTY_COLUMNS[t.sheet]);
+    const state = main.form.terms.every((t) => !t.dateColumn);
     targets.push({
       accountId: main.acc.id, code: main.acc.displayCode, name: main.acc.name, oppositeId: other?.acc.id ?? null, form: main.form,
       sign: main.acc.classification === 'AC' ? 1 : -1, currency,
-      nominal: main.acc.classification === 'CND' || main.acc.classification === 'CNA',
+      nominal: !state && (main.acc.classification === 'CND' || main.acc.classification === 'CNA'),
+      state,
+      plain: main.acc.classification === 'CND' || main.acc.classification === 'CNA' || !PARTY_CODE.test(main.acc.displayCode),
       fixedParty: sharedByRow && !other ? null : FIXED_PARTY[main.acc.displayCode] ?? (main.acc.code === '699' ? null : partyFromAccountName(main.acc.name)),
     });
   }
@@ -247,8 +348,9 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   // 2. Aportaciones de cada fila.
   const idx = tableIndex(w.wb);
   const tables = new Map<string, TableData>();
-  for (const name of new Set(targets.flatMap((t) => t.form.terms.map((x) => x.sheet)))) {
-    const td = readTable(idx, name);
+  const allTerms = targets.flatMap((t) => t.form.terms);
+  for (const name of new Set(allTerms.map((x) => x.sheet))) {
+    const td = name.includes('!') ? readRowTable(w.wb, name, allTerms.filter((x) => x.sheet === name)) : readTable(idx, name);
     if (!td) { issues.push(`No se encuentra la tabla ${name}`); continue; }
     tables.set(name, td);
     log(`  ${name} (${td.sheet}): ${td.rows.length} filas`);
@@ -271,8 +373,12 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
         const byDate = new Map<string, { amount: ReturnType<typeof money>; partyCol: string | null }>();
         for (const term of terms) {
           if (!term.criteria.every((c) => criterionMatches(row.values[c.column], c.value))) continue;
-          const date = asIsoDate(row.values[term.dateColumn!]);
+          let date = term.dateColumn
+            ? asIsoDate(row.values[term.dateColumn])
+            : asIsoDate(row.values[UNDATED_DATE[table] ?? '']) ?? opts.openingDate;
           if (!date) continue;
+          // Fecha 0 del Excel (30/12/1899) o anterior: en un acumulado cuenta como saldo anterior a la apertura.
+          if (date < '2015-01-01' && !term.monthly) date = opts.openingDate;
           const raw = row.values[term.column];
           const v = excelNumber(raw);
           if (v === null) {
@@ -297,7 +403,7 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
             partyName = partyName ? cleanName(partyName) : '(sin identificar)';
           }
           const empresa = (asString(row.values.Empresa) ?? '').toLowerCase();
-          const companyCode = COMPANY_ALIASES[empresa] ?? opts.debtCompany;
+          const companyCode = COMPANY_ALIASES[empresa] ?? TABLE_COMPANY[table] ?? TABLE_COMPANY[table.split('!')[0]!] ?? opts.debtCompany;
           const usdCol = target.currency !== 'USD' ? EXCEL_USD_COLUMN[table] : undefined;
           const ex = usdCol ? excelNumber(row.values[usdCol]) : null;
           contributions.push({
@@ -334,7 +440,7 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
     return pa.id;
   };
 
-  const batch = await prisma.importBatch.create({ data: { sourceFile: basename(file), fileHash: w.hash, tableName: 'Deudas', stats: {} } });
+  const batch = await prisma.importBatch.create({ data: { sourceFile: basename(file), fileHash: w.hash, tableName: scope.name, stats: {} } });
   // Filas de importación (una por fila de tabla con aportación).
   const importRowIds = new Map<string, string>();
   const rowKeys = [...new Map(contributions.map((c) => [`${c.sheet}|${c.excelRow}`, c])).values()];
@@ -353,8 +459,15 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   // 4. Saldos de apertura por cuenta corriente.
   const opening = new Map<string, { c: Contribution; amount: ReturnType<typeof money> }>();
   const after: Contribution[] = [];
+  const plainOpening = new Map<string, { c: Contribution; amount: ReturnType<typeof money> }>();
   for (const c of contributions) {
     if (c.target.nominal && c.date <= opts.openingDate) continue; // resultados de meses anteriores a la apertura
+    if (c.target.plain && c.date <= opts.openingDate) {
+      const k = `${c.companyCode}|${c.target.accountId}`;
+      const prev = plainOpening.get(k);
+      plainOpening.set(k, { c, amount: prev ? prev.amount.plus(c.amount) : c.amount });
+      continue;
+    }
     if (c.date <= opts.openingDate) {
       const pa = await partyAccountOf(c);
       const prev = opening.get(pa);
@@ -370,7 +483,23 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
     }));
     openingDocs.set(paId, r.document.id);
   }
-  log(`Saldos de apertura: ${openingDocs.size} cuentas corrientes`);
+  // Saldos de apertura de cuentas sin contraparte (inventario…): un asiento por empresa contra 699.9997.
+  for (const [companyCode, items] of groupBy([...plainOpening.values()], (x) => x.c.companyCode)) {
+    const company = companies.get(companyCode)!;
+    const lines = items.filter((x) => !roundAmount(x.amount).isZero())
+      .map((x) => ({ accountId: x.c.target.accountId, currency: 'USD', amount: roundAmount(x.amount).toFixed(4), amountUsd: roundAmount(x.amount).toFixed(4), memo: `Apertura ${x.c.target.code}` }));
+    if (!lines.length) continue;
+    const net = lines.reduce((sum, l) => sum.plus(money(l.amount)), money(0));
+    await withTx(prisma, { timeoutMs: 60_000 }, async (tx) => {
+      const openingId = await resolveMapping(tx, 'opening.balance', { companyId: company.id });
+      await postEntry(tx, {
+        companyId: company.id, entryDate: opts.openingDate, kind: 'OPENING',
+        memo: `Saldos de apertura al ${opts.openingDate.split('-').reverse().join('/')} (migración ${scope.name})`,
+        lines: [...lines, { accountId: openingId, currency: 'USD', amount: net.neg().toFixed(4), amountUsd: net.neg().toFixed(4), memo: 'Contrapartida de apertura' }],
+      });
+    });
+  }
+  log(`Saldos de apertura: ${openingDocs.size} cuentas corrientes, ${plainOpening.size} cuentas sin contraparte`);
 
   // 5. Documentos posteriores a la apertura (uno por fila, fecha y cuenta corriente).
   after.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.excelRow - b.excelRow));
@@ -390,14 +519,14 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   for (let i = 0; i < groups.length; i += BATCH) {
     const chunk = groups.slice(i, i + BATCH);
     const paIds: string[][] = [];
-    for (const g of chunk) { const ids: string[] = []; for (const c of g) ids.push(c.target.nominal ? '' : await partyAccountOf(c)); paIds.push(ids); }
+    for (const g of chunk) { const ids: string[] = []; for (const c of g) ids.push(c.target.plain ? '' : await partyAccountOf(c)); paIds.push(ids); }
     await withTx(prisma, { timeoutMs: 300_000 }, async (tx) => {
       for (const [k, g] of chunk.entries()) {
         const ids = paIds[k]!;
         const first = g[0]!;
         const desc = describe(first);
         // Cesión de deuda: dos cuentas corrientes de la misma moneda con importes opuestos (zelle Invictus).
-        if (g.length === 2 && !g[0]!.target.nominal && !g[1]!.target.nominal && g[0]!.target.currency === g[1]!.target.currency && roundAmount(g[0]!.amount.plus(g[1]!.amount)).isZero()) {
+        if (g.length === 2 && !g[0]!.target.plain && !g[1]!.target.plain && g[0]!.target.currency === g[1]!.target.currency && roundAmount(g[0]!.amount.plus(g[1]!.amount)).isZero()) {
           const r = await postPartyDocument(tx, {
             partyAccountId: ids[0]!, counterPartyAccountId: ids[1]!, date: first.date, kind: 'ASSIGNMENT', amount: roundAmount(g[0]!.amount).toFixed(4),
             description: `Cesión de deuda: ${desc}`, importRowId: takeImportRow(first),
@@ -406,30 +535,30 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
           counters.assignments++;
           continue;
         }
-        for (const [j, c] of g.entries()) {
-          if (c.target.nominal) {
-            // Resultado sin contraparte: documento de migración contra el puente.
-            const company = companies.get(c.companyCode)!;
-            const year = Number(c.date.slice(0, 4));
-            const seq = await nextNumber(tx, company.id, year, 'MIG');
-            const doc = await tx.document.create({
-              data: {
-                companyId: company.id, docType: 'MIGRATION', number: `${company.code}-MIG-${year}-${String(seq).padStart(6, '0')}`,
-                docDate: new Date(`${c.date}T00:00:00Z`), memo: desc, importRowId: takeImportRow(c),
-              },
-            });
-            const usd = roundAmount(c.amount).toFixed(4);
-            await postEntry(tx, {
-              companyId: company.id, entryDate: c.date, kind: 'AUTO', memo: desc, documentId: doc.id,
-              lines: [
-                { accountId: c.target.accountId, currency: 'USD', amount: usd, memo: desc },
-                { accountId: await bridge(company.id), currency: 'USD', amount: roundAmount(c.amount).neg().toFixed(4), memo: desc },
-              ],
-            });
-            remember(rowDocs, c, doc.id);
-            counters.documents++;
-            continue;
+        // Cuentas sin contraparte de la fila (ventas, costos, inventario…): un asiento con todas sus líneas y
+        // el puente solo por la diferencia (si las fórmulas del Excel de la fila cuadran, no hay puente).
+        for (const [companyCode, plain] of groupBy(g.filter((c) => c.target.plain), (c) => c.companyCode)) {
+          const company = companies.get(companyCode)!;
+          const year = Number(first.date.slice(0, 4));
+          const seq = await nextNumber(tx, company.id, year, 'MIG');
+          const doc = await tx.document.create({
+            data: {
+              companyId: company.id, docType: 'MIGRATION', number: `${company.code}-MIG-${year}-${String(seq).padStart(6, '0')}`,
+              docDate: new Date(`${first.date}T00:00:00Z`), memo: desc, importRowId: takeImportRow(plain[0]!),
+            },
+          });
+          const lines = plain.filter((c) => !roundAmount(c.amount).isZero())
+            .map((c) => ({ accountId: c.target.accountId, currency: 'USD', amount: roundAmount(c.amount).toFixed(4), memo: desc }));
+          const net = lines.reduce((sum, l) => sum.plus(money(l.amount)), money(0));
+          if (!net.isZero()) lines.push({ accountId: await bridge(company.id), currency: 'USD', amount: net.neg().toFixed(4), memo: desc });
+          if (lines.length >= 2) {
+            await postEntry(tx, { companyId: company.id, entryDate: first.date, kind: 'AUTO', memo: desc, documentId: doc.id, lines });
           }
+          for (const c of plain) remember(rowDocs, c, doc.id);
+          counters.documents++;
+        }
+        for (const [j, c] of g.entries()) {
+          if (c.target.plain) continue; // van juntas en un asiento de migración (abajo)
           const paId = ids[j]!;
           const companyId = companyOfPa.get(paId)!;
           const kind: PartyDocKind = c.table === 'RRHH_Nómina' ? 'PAYROLL' : c.amount.gt(0) ? 'CHARGE' : 'CREDIT';
@@ -463,13 +592,15 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
 
   // 6. Filas sin aportación posterior a la apertura en tablas con importes fuera de alcance: nada que hacer.
   // 7. Partidas abiertas: facturas de proveedores, nómina y CxC/CxP generales con sus pagos.
-  const openItems = await buildOpenItems(prisma, { contributions, partyAccountOf, docOfRow, openingDocs, openingDate: opts.openingDate, maxDate: opts.maxDate, issues });
+  const openItems = !scope.debts ? {} : await buildOpenItems(prisma, { contributions, partyAccountOf, docOfRow, openingDocs, openingDate: opts.openingDate, maxDate: opts.maxDate, issues });
 
   // 8. Pagos de estas deudas en tesorería (bandeja de revisión) → cuenta puente, con contraparte.
-  const trayStats = await moveTreasuryDebtsToBridge(prisma, bridge, issues);
+  const trayStats = scope.debts
+    ? await moveTreasuryDebtsToBridge(prisma, bridge, issues)
+    : await applyTrayRules(prisma, trayRules, new Set(accounts.map((a) => a.id)), bridge, issues, log);
 
   // Las devoluciones son traspasos para el Excel (845/924.8881 suman "Traspaso" y "Devolución").
-  const devol = await prisma.cashCategory.findMany({ where: { code: { in: ['DEVOLUCION'] } } });
+  const devol = scope.debts ? await prisma.cashCategory.findMany({ where: { code: { in: ['DEVOLUCION'] } } }) : [];
   for (const cat of devol) {
     await prisma.cashCategory.update({ where: { id: cat.id }, data: { kind: 'TRANSFER' } });
     const pending = await prisma.treasuryMovement.findMany({ where: { categoryId: cat.id, needsReview: true }, include: { document: true } });
@@ -483,7 +614,7 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
 
   // 9. Revaluación, cierre de transitorias de tesorería y reclasificación por signo, mes a mes.
   const monthly: { company: string; month: string; revalUsd: string; reclassUsd: string }[] = [];
-  if (opts.revalueUntil) {
+  if (opts.revalueUntil && scope.debts) {
     const companyIds = [...new Set([
       ...(await prisma.partyAccount.findMany({ select: { companyId: true } })).map((p) => p.companyId),
       ...(await prisma.treasuryAccount.findMany({ select: { companyId: true } })).map((t) => t.companyId),
@@ -502,7 +633,9 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   }
 
   const stats = {
-    ...counters, ...openItems, ...trayStats, parties: await prisma.party.count(), partyAccounts: await prisma.partyAccount.count(),
+    ...counters, ...openItems, ...trayStats,
+    stateAccounts: [...new Set(targets.filter((t) => t.state).flatMap((t) => [t.accountId, ...(t.oppositeId ? [t.oppositeId] : [])]))],
+    parties: await prisma.party.count(), partyAccounts: await prisma.partyAccount.count(),
   };
   await prisma.importBatch.update({ where: { id: batch.id }, data: { stats: { ...stats, issues: issues.slice(0, 500) } } });
   return { stats, issues, monthly };
@@ -534,7 +667,8 @@ const DESC_COLUMNS = ['DESCRIPCIÓN', 'DESCRIPCION', 'Descripción', 'Concepto',
 
 function describe(c: Contribution): string {
   const parts = DESC_COLUMNS.map((k) => asString(c.values[k])).filter(Boolean).slice(0, 2);
-  return `${c.partyName}: ${parts.join(' · ') || c.table} [${c.sheet} fila ${c.excelRow}]`.slice(0, 480);
+  const where = c.sheet.includes('!') ? `${c.sheet.replace('!', ' fila ')} columna ${c.excelRow}` : `${c.sheet} fila ${c.excelRow}`;
+  return `${c.partyName}: ${parts.join(' · ') || c.table} [${where}]`.slice(0, 480);
 }
 
 function referenceOf(c: Contribution): string | null {
@@ -690,4 +824,76 @@ async function moveTreasuryDebtsToBridge(prisma: PrismaClient, bridge: (companyI
   }
   if (!cats.length) issues.push('No hay categorías de deudas en tesorería');
   return { trayToBridge: moved, trayToBridgeWithParty: withParty };
+}
+
+/** Fila guardada en import_row.raw → valores como los da exceljs (las fechas y los números con formato de fecha). */
+function hydrate(raw: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) ? new Date(v) : v]));
+}
+
+/**
+ * Movimientos de caja y bancos frente a las cuentas de ventas y gastos:
+ * - los que el BC suma en una de estas cuentas (p. ej. 828 Asesoría = filas de Banco_Emp_Exterior con
+ *   referencia "Asesoría") se llevan a ella (desde la bandeja o desde otra cuenta). Se evalúan los mismos
+ *   criterios de la fórmula sobre la fila original del Excel;
+ * - los que la migración de tesorería llevó por su categoría a una cuenta que el Excel calcula desde otras
+ *   hojas (ventas de distribución, salarios, impuestos…) pasan a la cuenta puente: el ingreso o gasto ya lo
+ *   contabilizan las filas de esas hojas y el cobro o pago queda en el puente, como las deudas de la fase 3.
+ */
+async function applyTrayRules(
+  prisma: PrismaClient,
+  rules: { accountId: string; code: string; terms: LinearTerm[] }[],
+  scopeAccountIds: Set<string>,
+  bridge: (companyId: string) => Promise<string>,
+  issues: string[],
+  log: (m: string) => void,
+) {
+  // La bandeja y todos los movimientos menos los que la fase 3 dejó en cuentas corrientes de deudas. Los que dejó en
+  // la cuenta puente por su categoría sí entran: si el BC suma la fila en una cuenta de gastos (831.9990 "Comisión
+  // Distribución" del banco), manda la fórmula del BC.
+  const debtAccounts = (await prisma.account.findMany({
+    where: { code: { in: DEBT_CODES }, NOT: { fullCode: { in: ['699.9995', '699.9998'] } } }, select: { id: true },
+  })).map((a) => a.id);
+  const candidates = await prisma.treasuryMovement.findMany({
+    where: { OR: [{ needsReview: true }, { counterAccountId: null }, { counterAccountId: { notIn: debtAccounts } }] },
+    include: { document: true },
+  });
+  const rows = await prisma.importRow.findMany({
+    where: { id: { in: candidates.map((m) => m.document.importRowId).filter((x): x is string => !!x) } },
+    select: { id: true, sheet: true, raw: true },
+  });
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+  let moved = 0;
+  let toBridge = 0;
+  const byAccount = new Map<string, number>();
+  for (let i = 0; i < candidates.length; i += 200) {
+    const chunk = candidates.slice(i, i + 200);
+    await withTx(prisma, { timeoutMs: 300_000 }, async (tx) => {
+      for (const m of chunk) {
+        const row = m.document.importRowId ? rowById.get(m.document.importRowId) : undefined;
+        const raw = hydrate((row?.raw ?? {}) as Record<string, unknown>);
+        const hits = row ? rules.filter((r) => r.terms.some((t) => t.sheet === row.sheet && t.criteria.every((c) => criterionMatches(raw[c.column], c.value)))) : [];
+        const accounts = [...new Set(hits.map((h) => h.accountId))];
+        if (accounts.length > 1) {
+          issues.push(`${row!.sheet}: movimiento ${m.document.number} coincide con varias cuentas (${hits.map((h) => h.code).join(', ')}); no se reclasifica`);
+          continue;
+        }
+        if (accounts.length === 1) {
+          if (accounts[0] === m.counterAccountId) continue;
+          await reclassifyMovement(tx, m.id, { accountId: accounts[0]!, allowResolved: true, note: `Migración: el BC del Excel suma esta fila en ${hits[0]!.code}` });
+          byAccount.set(hits[0]!.code, (byAccount.get(hits[0]!.code) ?? 0) + 1);
+          moved++;
+          continue;
+        }
+        if (m.needsReview || !m.counterAccountId || !scopeAccountIds.has(m.counterAccountId)) continue;
+        await reclassifyMovement(tx, m.id, {
+          accountId: await bridge(m.document.companyId), allowResolved: true,
+          note: 'Migración: el Excel calcula esta cuenta desde las hojas de ventas, nómina o impuestos; el cobro o pago queda en la cuenta puente',
+        });
+        toBridge++;
+      }
+    });
+  }
+  log(`Tesorería → cuentas de ventas y gastos: ${moved} (${[...byAccount].map(([k, v]) => `${k}: ${v}`).join(', ')}); → cuenta puente: ${toBridge}`);
+  return { trayToAccounts: moved, treasuryToBridge: toBridge };
 }

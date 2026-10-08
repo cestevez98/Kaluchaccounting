@@ -5,11 +5,14 @@ ERP financiero-operativo para Grupo Kaluch. Sustituye el libro Excel
 basada en un libro diario de partida doble, multi-empresa, multi-moneda y
 multi-segmento.
 
-**Estado:** Fase 3 completada (08/10/2026): contrapartes con cuentas corrientes, cuentas por cobrar
-y por pagar, partidas abiertas y liquidaciones, cesiones de deuda, nómina y migración de las hojas de
-deudas y RRHH del Excel. Antes: fase 2 (tesorería, conciliación con el BC, usuarios, 2FA, despliegue).
+**Estado:** Fase 4 completada (09/10/2026): facturas de exportación con su cierre, contenedores,
+inventario con kardex, ventas de distribución con costo por lote, comisiones, ONAT, inversionistas y
+utilidad por contenedor; migración de ventas, costos y todos los gastos e ingresos de operación del Excel
+(0 diferencias sin explicar de abril a octubre). Antes: fase 3 (contrapartes, CxC/CxP, nómina) y fase 2
+(tesorería, usuarios, 2FA, despliegue).
 Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) · [fase 3](docs/fases/fase-3.md) ·
-[despliegue](docs/despliegue.md). Siguiente: fase 4 (exportación y distribución).
+[fase 4](docs/fases/fase-4.md) · [despliegue](docs/despliegue.md). Siguiente: fase 5 (financiamientos,
+fiscal, capital y cierres).
 
 ## Puesta en marcha (desarrollo)
 
@@ -60,4 +63,5 @@ Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (
 | [Fase 1](docs/fases/fase-1.md) | Resumen de lo construido, resultado de la importación, tests y pendientes |
 | [Fase 2](docs/fases/fase-2.md) | Tesorería, migración de caja y bancos, conciliación abril–octubre |
 | [Fase 3](docs/fases/fase-3.md) | Contrapartes, CxC/CxP, nómina, migración de deudas guiada por las fórmulas del BC |
+| [Fase 4](docs/fases/fase-4.md) | Exportación, contenedores, inventario, ventas de distribución, inversionistas, gastos de operación y totales de control |
 | [Despliegue](docs/despliegue.md) | Instalación en el VPS, actualización, carga de datos y copias de seguridad |

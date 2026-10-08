@@ -283,3 +283,61 @@ export const OPEN_ITEM_STATUS: Record<OpenItemRow['status'], { label: string; to
   SETTLED: { label: 'Liquidada', tone: 'green' },
   CANCELLED: { label: 'Cancelada', tone: 'gray' },
 };
+
+// ───────────────────────── Fase 4: ventas, contenedores e inventario ─────────────────────────
+
+export interface ExportInvoiceRow {
+  id: string; companyId: string; companyCode: string; number: string; invoiceDate: string; closeDate: string | null;
+  service: 'GOODS' | 'SERVICES'; internal: boolean; description: string; status: 'PENDING' | 'CLOSED';
+  partyId: string; partyName: string; partyAccountId: string; sellerName: string | null;
+  amountUsd: string; factoryUsd: string; logisticsUsd: string; otherUsd: string; estimatedUsd: string; commissionUsd: string; marginUsd: string;
+}
+export interface ExportInvoiceDetail extends ExportInvoiceRow {
+  issueDocument: string; closeDocument: string | null;
+  lines: { date: string; entry: string; account: string; accountName: string; amountUsd: string; memo: string | null }[];
+}
+export const EXPORT_STATUS: Record<ExportInvoiceRow['status'], { label: string; tone: 'amber' | 'green' }> = {
+  PENDING: { label: 'Pendiente de cierre', tone: 'amber' },
+  CLOSED: { label: 'Cerrada', tone: 'green' },
+};
+
+export interface ProductRow { id: string; code: string; name: string; unit: string; active: boolean; stockQuantity: string; stockUsd: string }
+
+export interface ContainerInvestorRow { id: string; partyAccountId: string; partyId: string; name: string; investedUsd: string; profitPct: string; shareUsd: string }
+export interface ContainerRow {
+  id: string; code: string; description: string; status: 'TRANSIT' | 'WAREHOUSE' | 'CLOSED'; arrivalDate: string | null;
+  totalCostUsd: string; soldQuantity: string; revenueUsd: string; costOfSalesUsd: string; commissionUsd: string; onatUsd: string;
+  utilityUsd: string; marginPct: string | null; stockQuantity: string; stockUsd: string; investors: ContainerInvestorRow[];
+}
+export interface ContainerDetail extends ContainerRow {
+  companyId: string; companyCode: string; transitUsd: string;
+  lots: { productId: string; productName: string; quantity: string; valueUsd: string }[];
+  movements: { id: string; date: string; kind: string; location: string; product: string | null; quantity: string; amountUsd: string; description: string; document: string }[];
+}
+export const CONTAINER_STATUS: Record<ContainerRow['status'], { label: string; tone: 'blue' | 'green' | 'gray' }> = {
+  TRANSIT: { label: 'En tránsito', tone: 'blue' },
+  WAREHOUSE: { label: 'En almacén', tone: 'green' },
+  CLOSED: { label: 'Cerrado', tone: 'gray' },
+};
+export const MOVE_KIND_LABEL: Record<string, string> = { COST: 'Costo', RECEIPT: 'Recepción', SALE: 'Venta', ADJUSTMENT: 'Ajuste' };
+
+export interface StockRow {
+  containerId: string; containerCode: string; companyId: string; productId: string; productCode: string; productName: string; unit: string;
+  quantity: string; valueUsd: string; unitCostUsd: string;
+}
+export interface KardexRow {
+  id: string; date: string; kind: string; container: string; document: string; description: string;
+  quantity: string; amountUsd: string; balanceQuantity: string; balanceUsd: string;
+}
+export interface SalesInvoiceRow {
+  id: string; number: string; date: string; companyCode: string; description: string | null; customer: string | null; partyId: string | null; lines: number;
+  totalUsd: string; costUsd: string; commissionUsd: string; onatUsd: string; marginUsd: string; status: string;
+}
+export interface SalesInvoiceDetail {
+  id: string; number: string; date: string; companyCode: string; description: string | null; customer: string | null; partyId: string | null; onatRate: string;
+  totalUsd: string; costUsd: string; commissionUsd: string; onatUsd: string;
+  lines: { id: string; product: string; unit: string; container: string; containerId: string; quantity: string; unitPriceUsd: string; amountUsd: string; costUsd: string; commissionUsd: string; onatUsd: string; seller: string | null }[];
+}
+export interface CommissionRow {
+  sellerPartyAccountId: string; partyId: string; seller: string; week: string; units: string; salesUsd: string; commissionUsd: string; invoices: string[];
+}

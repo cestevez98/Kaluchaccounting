@@ -6,10 +6,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api, ApiError, useApi } from '@/lib/api';
 
+type Mode = 'full' | 'sales' | 'rates';
+const MODE_LABEL: Record<Mode, string> = { full: 'migración completa', sales: 'exportación y distribución', rates: 'tasas' };
+
 interface Step { key: string; label: string; status: 'pending' | 'running' | 'done' | 'error' | 'skipped'; startedAt: string | null; finishedAt: string | null }
 interface ImportState {
-  job: { status: 'running' | 'done' | 'error'; mode: 'full' | 'rates'; fileName: string; startedBy: string; startedAt: string; finishedAt: string | null; steps: Step[]; log: string[]; error: string | null } | null;
-  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; lastImport: { at: string; file: string; table: string } | null };
+  job: { status: 'running' | 'done' | 'error'; mode: Mode; fileName: string; startedBy: string; startedAt: string; finishedAt: string | null; steps: Step[]; log: string[]; error: string | null } | null;
+  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; phases: { debts: boolean; sales: boolean }; lastImport: { at: string; file: string; table: string } | null };
 }
 
 const STEP_TONE: Record<Step['status'], { label: string; tone: 'gray' | 'green' | 'amber' | 'red' | 'blue' }> = {
@@ -25,12 +28,16 @@ const minutes = (a: string | null, b: string | null) => (a ? `${Math.max(0, Math
 export default function ImportPage() {
   const { data, error, reload } = useApi<ImportState>('/admin/import');
   const [file, setFile] = useState<File | null>(null);
-  const [mode, setMode] = useState<'full' | 'rates'>('full');
+  const [mode, setMode] = useState<Mode | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const running = data?.job?.status === 'running';
   const migrated = (data?.data.treasuryMovements ?? 0) > 0 || (data?.data.partyDocuments ?? 0) > 0;
+  const salesPending = !!data?.data.phases.debts && !data.data.phases.sales;
+  // Por defecto: lo que falta por migrar.
+  const current: Mode = mode ?? (!migrated ? 'full' : salesPending ? 'sales' : 'rates');
+  const needsConfirm = current !== 'rates';
 
   useEffect(() => {
     if (!running) return;
@@ -44,7 +51,7 @@ export default function ImportPage() {
     setBusy(true);
     setMsg(null);
     const fd = new FormData();
-    fd.append('mode', mode);
+    fd.append('mode', current);
     fd.append('file', file);
     try {
       await api('/admin/import', { method: 'POST', body: fd });
@@ -62,7 +69,7 @@ export default function ImportPage() {
     <div className="max-w-4xl">
       <PageHeader
         title="Importar el Excel"
-        subtitle="Migración de “Balance de comprobación.xlsx”: plan de cuentas, tasas, caja y bancos, deudas, proveedores y nómina, con conciliación final contra el BC del propio Excel. El archivo se borra del servidor al terminar."
+        subtitle="Migración de “Balance de comprobación.xlsx”: plan de cuentas, tasas, caja y bancos, deudas, proveedores y nómina, exportación y distribución, con conciliación final contra el BC del propio Excel. El archivo se borra del servidor al terminar."
       />
       {error && <Alert>{error.message}</Alert>}
       {!data && !error && <Spinner />}
@@ -84,26 +91,34 @@ export default function ImportPage() {
               {msg && <Alert>{msg}</Alert>}
               <div>
                 <label className="label" htmlFor="mode">Qué importar</label>
-                <select id="mode" className="input" value={mode} onChange={(e) => setMode(e.target.value as 'full')}>
+                <select id="mode" className="input" value={current} onChange={(e) => setMode(e.target.value as Mode)}>
                   <option value="full">Migración completa (una sola vez, sobre una base vacía)</option>
+                  <option value="sales">Añadir exportación y distribución (fase 4) a la base ya migrada</option>
                   <option value="rates">Solo actualizar las tasas de cambio</option>
                 </select>
               </div>
-              {mode === 'full' && migrated && (
+              {current === 'full' && migrated && (
                 <Alert kind="warning">Esta base ya tiene datos migrados: la migración completa no se puede repetir. Puedes actualizar solo las tasas.</Alert>
+              )}
+              {current === 'sales' && !salesPending && (
+                <Alert kind="warning">{data.data.phases.sales ? 'La exportación y distribución ya están migradas en esta base.' : 'Primero hay que hacer la migración completa (caja, bancos y deudas).'}</Alert>
               )}
               <div>
                 <label className="label" htmlFor="file">Archivo Excel (.xlsx)</label>
                 <input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
               </div>
-              {mode === 'full' && (
+              {needsConfirm && (
                 <label className="flex items-start gap-2 text-xs">
                   <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} className="mt-0.5" />
-                  <span>Entiendo que la migración tarda unos 10–15 minutos, que crea los saldos de apertura al 31/03/2026 y los movimientos desde abril, y que no se puede deshacer desde la aplicación.</span>
+                  <span>
+                    {current === 'full'
+                      ? 'Entiendo que la migración tarda unos 15–20 minutos, que crea los saldos de apertura al 31/03/2026 y los movimientos desde abril, y que no se puede deshacer desde la aplicación.'
+                      : 'Entiendo que la migración de exportación y distribución tarda unos 5 minutos, que actualiza el plan de cuentas y los valores del BC con este archivo y que no se puede deshacer desde la aplicación. Debe ser el mismo Excel (o una versión posterior) del que se migraron las fases anteriores.'}
+                  </span>
                 </label>
               )}
-              <button className="btn-primary" disabled={busy || !file || (mode === 'full' && (!confirm || migrated))}>
-                {busy ? 'Subiendo…' : mode === 'full' ? 'Subir e importar' : 'Subir y actualizar tasas'}
+              <button className="btn-primary" disabled={busy || !file || (needsConfirm && !confirm) || (current === 'full' && migrated) || (current === 'sales' && !salesPending)}>
+                {busy ? 'Subiendo…' : current === 'rates' ? 'Subir y actualizar tasas' : 'Subir e importar'}
               </button>
             </form>
           )}
@@ -111,7 +126,7 @@ export default function ImportPage() {
           {data.job && (
             <div className="card overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5 text-xs">
-                <span className="font-bold">{data.job.fileName} · {data.job.mode === 'full' ? 'migración completa' : 'tasas'} · {data.job.startedBy}</span>
+                <span className="font-bold">{data.job.fileName} · {MODE_LABEL[data.job.mode]} · {data.job.startedBy}</span>
                 {data.job.status === 'running' && <Badge tone="blue">En curso · {minutes(data.job.startedAt, null)}</Badge>}
                 {data.job.status === 'done' && <Badge tone="green">Terminada en {minutes(data.job.startedAt, data.job.finishedAt)}</Badge>}
                 {data.job.status === 'error' && <Badge tone="red">Con error</Badge>}
@@ -124,7 +139,7 @@ export default function ImportPage() {
                 </tbody>
               </table>
               {data.job.error && <div className="p-3"><Alert>{data.job.error}</Alert></div>}
-              {data.job.status === 'done' && data.job.mode === 'full' && (
+              {data.job.status === 'done' && data.job.mode !== 'rates' && (
                 <div className="p-3"><Alert kind="success">Migración terminada. Revisa el resultado en <Link className="underline" href="/conciliacion-bc">Conciliación con el Excel</Link>.</Alert></div>
               )}
               <pre aria-label="Registro" className="max-h-96 overflow-auto bg-ink px-4 py-3 text-[11px] leading-relaxed text-white/85">{data.job.log.join('\n') || '…'}</pre>

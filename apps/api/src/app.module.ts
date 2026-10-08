@@ -6,6 +6,7 @@ import { AdminController } from './admin/admin.controller';
 import { ImportController } from './admin/import.controller';
 import { TreasuryController } from './treasury/treasury.controller';
 import { PartiesController } from './parties/parties.controller';
+import { SalesController } from './sales/sales.controller';
 import { AuditController } from './audit/audit.controller';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
@@ -42,7 +43,7 @@ function jwtSecret(): string {
   imports: [JwtModule.registerAsync({ useFactory: () => ({ secret: jwtSecret() }) })],
   controllers: [
     HealthController, AuthController, OrgController, AccountsController, FxController,
-    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController, PartiesController, ImportController,
+    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController, PartiesController, SalesController, ImportController,
   ],
   providers: [
     PrismaService,

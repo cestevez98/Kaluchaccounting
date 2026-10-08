@@ -244,3 +244,77 @@ export const signReclassInputSchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100),
   month: z.coerce.number().int().min(1).max(12),
 });
+
+// ───────────────────────── Fase 4: exportación y distribución ─────────────────────────
+
+const nonNegativeDecimal = decimalString.refine((v) => !v.startsWith('-'), 'No puede ser negativo');
+
+export const exportInvoiceInputSchema = z.object({
+  partyAccountId: uuid,
+  number: z.string().trim().min(1).max(60),
+  invoiceDate: isoDate,
+  service: z.enum(['GOODS', 'SERVICES']),
+  internal: z.boolean().optional(),
+  description: z.string().trim().min(1).max(500),
+  amountUsd: positiveDecimal,
+  factoryUsd: nonNegativeDecimal.optional(),
+  logisticsUsd: nonNegativeDecimal.optional(),
+  otherUsd: nonNegativeDecimal.optional(),
+  estimatedUsd: nonNegativeDecimal.optional(),
+  commissionUsd: nonNegativeDecimal.optional(),
+  sellerPartyAccountId: uuid.nullable().optional(),
+  dueDate: isoDate.nullable().optional(),
+});
+
+export const exportCloseInputSchema = z.object({ closeDate: isoDate });
+
+export const productInputSchema = z.object({
+  code: z.string().trim().min(1).max(40).transform((s) => s.toUpperCase()),
+  name: z.string().trim().min(1).max(200),
+  unit: z.string().trim().min(1).max(20).default('u'),
+});
+
+export const containerInputSchema = z.object({
+  companyId: uuid,
+  code: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(500).default(''),
+});
+
+export const containerInvestorInputSchema = z.object({
+  partyAccountId: uuid,
+  investedUsd: nonNegativeDecimal.default('0'),
+  profitPct: decimalString.refine((v) => Number(v) >= 0 && Number(v) <= 100, 'Entre 0 y 100'),
+});
+
+export const containerCostInputSchema = z.object({
+  date: isoDate,
+  amountUsd: decimalString,
+  description: z.string().trim().min(1).max(500),
+  productId: uuid.nullable().optional(),
+  partyAccountId: uuid.nullable().optional(),
+  counterAccountId: uuid.nullable().optional(),
+  reference: z.string().max(60).nullable().optional(),
+});
+
+export const containerReceiptInputSchema = z.object({
+  date: isoDate,
+  lines: z.array(z.object({ productId: uuid, quantity: positiveDecimal, amountUsd: nonNegativeDecimal })).min(1).max(200),
+});
+
+export const salesInvoiceInputSchema = z.object({
+  companyId: uuid,
+  date: isoDate,
+  description: z.string().trim().min(1).max(500),
+  partyAccountId: uuid.nullable().optional(),
+  counterAccountId: uuid.nullable().optional(),
+  fiscal: z.boolean().optional(),
+  dueDate: isoDate.nullable().optional(),
+  lines: z.array(z.object({
+    productId: uuid,
+    containerId: uuid,
+    quantity: positiveDecimal,
+    unitPriceUsd: nonNegativeDecimal,
+    commissionPerUnitUsd: nonNegativeDecimal.optional(),
+    sellerPartyAccountId: uuid.nullable().optional(),
+  })).min(1).max(200),
+});

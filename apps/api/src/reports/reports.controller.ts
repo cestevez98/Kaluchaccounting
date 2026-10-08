@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { compareWithBc, generalLedger, toDate, trialBalance } from '@kaluch/db';
+import { compareControls, compareWithBc, generalLedger, toDate, trialBalance } from '@kaluch/db';
 import { BOOK_VIEWS, MONTH_NAMES, paginationSchema, trialBalanceQuerySchema } from '@kaluch/shared';
 import ExcelJS from 'exceljs';
 import type { Response } from 'express';
@@ -114,5 +114,13 @@ export class ReportsController {
       query,
     );
     return compareWithBc(this.prisma, { year: q.year, month: q.month, codePrefixes: q.codes ? q.codes.split(',').map((c) => c.trim()).filter(Boolean) : undefined });
+  }
+
+  /** Totales de control del BC (ING/GAS/UT 777/888/999) del sistema frente al Excel. */
+  @Get('bc-compare/controls')
+  @RequirePermission('reports:financial')
+  async bcControls(@Query() query: unknown) {
+    const q = parse(z.object({ year: z.coerce.number().int(), month: z.coerce.number().int().min(1).max(12) }), query);
+    return (await compareControls(this.prisma, { year: q.year, month: q.month })).filter((c) => /^(ING|GAS|UT) \d{3}$/.test(c.name));
   }
 }

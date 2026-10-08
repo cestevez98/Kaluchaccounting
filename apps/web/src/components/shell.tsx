@@ -58,7 +58,26 @@ export const MODULES: Module[] = [
       { label: 'Configuración', items: [{ href: '/tesoreria/categorias', label: 'Categorías', perm: 'ledger:read' }] },
     ],
   },
-  { key: 'ventas', icon: '🛒', label: 'Ventas', href: '#', phase: 4 },
+  {
+    key: 'ventas', icon: '🛒', label: 'Ventas', href: '/ventas', perm: 'sales:read',
+    groups: [
+      {
+        label: 'Exportación',
+        items: [
+          { href: '/ventas', label: 'Facturas de exportación', perm: 'sales:read' },
+          { href: '/ventas/exportacion/nueva', label: 'Nueva factura', perm: 'sales:operate' },
+        ],
+      },
+      {
+        label: 'Distribución',
+        items: [
+          { href: '/ventas/distribucion', label: 'Facturas de distribución', perm: 'sales:read' },
+          { href: '/ventas/distribucion/nueva', label: 'Nueva factura', perm: 'sales:operate' },
+          { href: '/ventas/comisiones', label: 'Comisiones de vendedores', perm: 'sales:read' },
+        ],
+      },
+    ],
+  },
   {
     key: 'cobrar', icon: '📥', label: 'Cuentas por Cobrar', href: '/cobrar', perm: 'parties:read',
     groups: [{ label: 'Cuentas por cobrar', items: [
@@ -93,8 +112,30 @@ export const MODULES: Module[] = [
       ] },
     ],
   },
-  { key: 'inventario', icon: '🗄️', label: 'Inventario', href: '#', phase: 4 },
-  { key: 'inversiones', icon: '📈', label: 'Inversiones', href: '#', phase: 4 },
+  {
+    key: 'inventario', icon: '🗄️', label: 'Inventario', href: '/inventario', perm: 'sales:read',
+    groups: [
+      {
+        label: 'Distribución',
+        items: [
+          { href: '/inventario', label: 'Contenedores y utilidad', perm: 'sales:read' },
+          { href: '/inventario/productos', label: 'Productos y kardex', perm: 'sales:read' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'inversiones', icon: '📈', label: 'Inversiones', href: '/inversiones', perm: 'sales:read',
+    groups: [
+      {
+        label: 'Inversiones',
+        items: [
+          { href: '/inversiones', label: 'Inversionistas por contenedor', perm: 'sales:read' },
+          { href: '/terceros?role=INVESTOR', label: 'Cuentas de inversionistas', perm: 'parties:read' },
+        ],
+      },
+    ],
+  },
   { key: 'financiamientos', icon: '💰', label: 'Financiamientos', href: '#', phase: 5 },
   { key: 'impuestos', icon: '🧾', label: 'Impuestos', href: '#', phase: 5 },
   {

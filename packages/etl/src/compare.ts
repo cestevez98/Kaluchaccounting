@@ -1,4 +1,4 @@
-import { compareWithBc, type BcCompareRow, type PrismaClient } from '@kaluch/db';
+import { compareControls, compareWithBc, type BcCompareRow, type BcControlRow, type PrismaClient } from '@kaluch/db';
 import { formatNumber } from '@kaluch/shared';
 import ExcelJS from 'exceljs';
 
@@ -9,10 +9,19 @@ export async function runCompare(prisma: PrismaClient, p: { from: string; to: st
   const [fy, fm] = p.from.split('-').map(Number) as [number, number];
   const [ty, tm] = p.to.split('-').map(Number) as [number, number];
   const all: BcCompareRow[] = [];
+  const controls: BcControlRow[] = [];
   for (let y = fy, m = fm; y < ty || (y === ty && m <= tm); m === 12 ? (y++, (m = 1)) : m++) {
     const r = await compareWithBc(prisma, { year: y, month: m, codePrefixes: p.codes });
     all.push(...r.rows);
     console.log(`${String(m).padStart(2, '0')}/${y}: ${r.summary.OK} cuadran · ${r.summary.EXPLAINED} explicadas · ${r.summary.DIFF} con diferencia · ${r.summary.ONLY_SYSTEM} solo en el sistema`);
+    controls.push(...(await compareControls(prisma, { year: y, month: m })).filter((c) => /^(ING|GAS|UT) \d{3}$/.test(c.name)));
+  }
+  if (controls.length) {
+    console.log('\nTotales de control (ING/GAS/UT por segmento):');
+    for (const c of controls) {
+      const extra = c.status === 'OK' ? '' : c.status === 'EXPLAINED' ? ` · explicada por ${c.explainedBy.join(', ')}` : ` · pendiente: ${c.pending.join(', ')}`;
+      console.log(`  ${String(c.month).padStart(2, '0')}/${c.year} ${c.name.padEnd(8)} Excel ${formatNumber(c.excel).padStart(14)} · Sistema ${formatNumber(c.system).padStart(14)} · Dif ${formatNumber(c.diff).padStart(12)}  ${STATUS_LABEL[c.status]}${extra}`.slice(0, 260));
+    }
   }
   const bad = all.filter((r) => r.status === 'DIFF');
   if (bad.length) {
@@ -31,6 +40,15 @@ export async function runCompare(prisma: PrismaClient, p: { from: string; to: st
     ws.columns.forEach((c, i) => {
       c.width = [9, 12, 60, 10, 16, 16, 14, 22, 60][i];
       if (i >= 4 && i <= 6) c.numFmt = '#,##0.00;[Red]-#,##0.00';
+    });
+    const wc = wb.addWorksheet('Totales de control');
+    wc.addRow(['Mes', 'Total', 'Excel (USD)', 'Sistema (USD)', 'Diferencia', 'Estado', 'Explicada por', 'Pendiente']).font = { bold: true };
+    for (const c of controls) {
+      wc.addRow([`${String(c.month).padStart(2, '0')}/${c.year}`, c.name, Number(c.excel), Number(c.system), Number(c.diff), STATUS_LABEL[c.status], c.explainedBy.join(', '), c.pending.join(', ')]);
+    }
+    wc.columns.forEach((c, i) => {
+      c.width = [9, 10, 16, 16, 14, 22, 40, 60][i];
+      if (i >= 2 && i <= 4) c.numFmt = '#,##0.00;[Red]-#,##0.00';
     });
     await wb.xlsx.writeFile(p.out);
     console.log(`\nInforme guardado en ${p.out}`);

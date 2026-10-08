@@ -30,7 +30,9 @@ export function readCell(ws: ExcelJS.Worksheet, row: number, col: number): CellI
       if (!formula && o.sharedFormula) formula = ws.getCell(o.sharedFormula).formula ?? null;
       const r = o.result as { error?: string } | undefined;
       if (r && typeof r === 'object' && 'error' in r) return { value: null, formula, error: r.error ?? '#ERROR' };
-      return { value: o.result ?? null, formula, error: null };
+      // El valor de exceljs omite los resultados "falsos" (0, FALSE): se leen del modelo de la celda.
+      const result = o.result ?? (cell as unknown as { model?: { result?: unknown } }).model?.result;
+      return { value: result ?? null, formula, error: null };
     }
   }
   return { value: v ?? null, formula: null, error: null };
