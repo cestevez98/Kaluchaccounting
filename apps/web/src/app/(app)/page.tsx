@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Alert, Spinner } from '@/components/ui';
 import { qs, useApi } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import type { TreasuryAccount, TrialBalance } from '@/lib/types';
+import type { PartyBalance, TreasuryAccount, TrialBalance } from '@/lib/types';
 
 function Kpi({ label, value, sub, icon, href, tone }: { label: string; value: string; sub: string; icon: string; href?: string; tone?: 'ok' | 'warn' | 'bad' }) {
   const color = tone === 'bad' ? 'text-bad' : tone === 'warn' ? 'text-warn' : tone === 'ok' ? 'text-ok' : 'text-ink';
@@ -44,6 +44,9 @@ export default function DashboardPage() {
   const { data: tb, error } = useApi<TrialBalance>(me && can('reports:financial') ? `/reports/trial-balance${qs({ year, month, companyId })}` : null);
   const { data: accounts } = useApi<TreasuryAccount[]>(me && can('ledger:read') ? `/treasury/accounts${qs({ companyId })}` : null);
   const { data: review } = useApi<{ count: number; usd: string }[]>(me && can('ledger:read') ? `/treasury/review/summary${qs({ companyId })}` : null);
+  const { data: parties } = useApi<PartyBalance[]>(me && can('parties:read') ? `/parties/balances${qs({ companyId })}` : null);
+  const receivable = sum((parties ?? []).filter((p) => money(p.balanceUsd).gt(0)).map((p) => p.balanceUsd));
+  const payable = sum((parties ?? []).filter((p) => money(p.balanceUsd).lt(0)).map((p) => p.balanceUsd)).neg();
 
   const cash = sum((accounts ?? []).map((a) => a.balanceUsd));
   const pending = review?.reduce((s, r) => s + r.count, 0) ?? 0;
@@ -132,9 +135,14 @@ export default function DashboardPage() {
           )}
         </div>
         <div className="space-y-3">
-          <div className="text-[10px] font-semibold tracking-wide text-subtle uppercase">Próximamente</div>
+          <div className="text-[10px] font-semibold tracking-wide text-subtle uppercase">Terceros y próximos módulos</div>
           <Future label="Ventas y utilidad por contenedor" icon="🛒" phase={4} />
-          <Future label="Cuentas por cobrar y pagar" icon="📥" phase={3} />
+          {can('parties:read') && (
+            <div className="grid grid-cols-2 gap-3">
+              <Kpi icon="📥" label="Por cobrar" value={parties ? formatNumber(receivable, 0) : '…'} sub="USD · cuentas corrientes" href="/cobrar" />
+              <Kpi icon="📤" label="Por pagar" value={parties ? formatNumber(payable, 0) : '…'} sub="USD · proveedores, nómina…" href="/pagar" />
+            </div>
+          )}
           <Future label="Inventario valorado" icon="📦" phase={4} />
           <Future label="Estados financieros (ES, ER, EFE)" icon="📊" phase={6} />
         </div>

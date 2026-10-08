@@ -52,7 +52,8 @@ Resumen: [fases/fase-2.md](fases/fase-2.md).
   la parte de efectivo de 846/925 y la parte de "Cambios" de 845/924 concilian
   con BC consolidado en abril–octubre de 2026.
 
-## Fase 3 · Contrapartes, proveedores y nómina
+## Fase 3 · Contrapartes, proveedores y nómina ✅
+Resumen: [fases/fase-3.md](fases/fase-3.md).
 - Contrapartes con roles, cuentas corrientes por moneda, partidas abiertas,
   liquidaciones y estado de cuenta.
 - Casos especiales: remesas con plataforma/% (Eduardo, Iván, Roger, Nelson,

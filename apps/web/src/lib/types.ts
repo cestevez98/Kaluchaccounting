@@ -164,3 +164,122 @@ export const TREASURY_KIND_LABEL: Record<string, string> = { CASH: 'Caja', BANK:
 export const CATEGORY_KIND_LABEL: Record<string, string> = {
   INCOME: 'Ingreso', EXPENSE: 'Gasto', EXCHANGE: 'Cambio de moneda', TRANSFER: 'Traspaso', DEBT: 'Deuda / contraparte', OTHER: 'Otro',
 };
+
+// ───────────── Contrapartes (fase 3) ─────────────
+
+export type PartyRole = 'CUSTOMER' | 'SUPPLIER' | 'EMPLOYEE' | 'PARTNER' | 'INVESTOR' | 'SELLER' | 'COURIER' | 'LENDER' | 'OTHER';
+
+export const PARTY_ROLE_LABELS: Record<PartyRole, string> = {
+  CUSTOMER: 'Cliente', SUPPLIER: 'Proveedor', EMPLOYEE: 'Trabajador', PARTNER: 'Socio', INVESTOR: 'Inversionista',
+  SELLER: 'Vendedor', COURIER: 'Mensajería / envíos', LENDER: 'Financiador', OTHER: 'Otro',
+};
+
+export interface PartyRow {
+  id: string;
+  code: string;
+  name: string;
+  kind: 'PERSON' | 'COMPANY';
+  roles: PartyRole[];
+  taxId: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  balanceUsd: string;
+  accounts: number;
+  openItems: number;
+}
+
+export interface PartyBalance {
+  partyAccountId: string;
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  roles: PartyRole[];
+  companyId: string;
+  companyCode: string;
+  currency: string;
+  accountCode: string;
+  oppositeCode: string | null;
+  balance: string;
+  balanceUsd: string;
+  openItems: number;
+  oldestOpen: string | null;
+}
+
+export interface PartyDetail extends Omit<PartyRow, 'balanceUsd' | 'accounts' | 'openItems'> {
+  accounts: PartyBalance[];
+  categories: { id: string; code: string; name: string; partyAccountId: string }[];
+}
+
+export interface StatementLine {
+  date: string;
+  entryNumber: string;
+  documentId: string | null;
+  memo: string;
+  accountCode: string;
+  currency: string;
+  amount: string;
+  amountUsd: string;
+  balance: string;
+  balanceUsd: string;
+}
+
+export interface Statement {
+  currencies: { currency: string; opening: string; openingUsd: string; closing: string; closingUsd: string; lines: StatementLine[] }[];
+}
+
+export interface OpenItemRow {
+  id: string;
+  companyId: string;
+  companyCode?: string;
+  partyId: string;
+  party: { id: string; name: string; code: string };
+  side: 'RECEIVABLE' | 'PAYABLE';
+  reference: string;
+  docDate: string;
+  dueDate: string | null;
+  currency: string;
+  amount: string;
+  amountUsd: string;
+  openAmount: string;
+  status: 'OPEN' | 'PARTIAL' | 'SETTLED' | 'CANCELLED';
+  description: string;
+  documentId: string;
+  settlements: { id: string; kind: 'PAYMENT' | 'WRITE_OFF'; date: string; amount: string; note: string | null; paymentDocumentId: string | null }[];
+}
+
+export interface AgingRow {
+  partyId: string;
+  partyName: string;
+  currency: string;
+  buckets: { current: string; d60: string; d90: string; older: string };
+  total: string;
+  totalUsd: string;
+}
+
+export interface PayrollRow {
+  id: string;
+  period: string;
+  employer: string;
+  concept: string;
+  currency: string;
+  gross: string;
+  attendanceDeduction: string;
+  mipymeDeduction: string;
+  net: string;
+  number: string;
+  date: string;
+  partyId: string;
+  partyName: string;
+  reference: string | null;
+  openAmount: string | null;
+  status: string | null;
+}
+
+export const OPEN_ITEM_STATUS: Record<OpenItemRow['status'], { label: string; tone: 'gray' | 'green' | 'amber' | 'red' | 'blue' }> = {
+  OPEN: { label: 'Pendiente', tone: 'amber' },
+  PARTIAL: { label: 'Parcial', tone: 'blue' },
+  SETTLED: { label: 'Liquidada', tone: 'green' },
+  CANCELLED: { label: 'Cancelada', tone: 'gray' },
+};

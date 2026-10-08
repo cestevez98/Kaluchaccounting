@@ -52,3 +52,16 @@ export function asIsoDate(v: unknown): string | null {
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
   return null;
 }
+
+/**
+ * Valor numérico de una celda tal como lo suma Excel (SUMIFS): los números con formato de
+ * fecha llegan de exceljs como Date y se convierten de nuevo a su serial. El texto no suma.
+ */
+export function excelNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (v instanceof Date) {
+    const t = v.getTime();
+    return Number.isNaN(t) ? null : t / 86_400_000 + 25569;
+  }
+  return null;
+}

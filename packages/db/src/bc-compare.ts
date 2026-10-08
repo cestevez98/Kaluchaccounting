@@ -7,6 +7,26 @@ type Db = PrismaClient | Tx;
 
 export type BcStatus = 'OK' | 'EXPLAINED' | 'DIFF' | 'ONLY_SYSTEM';
 
+/**
+ * Signo del Excel: activos con saldo deudor en positivo; pasivo y patrimonio con saldo acreedor
+ * en positivo; en resultados, ingresos en positivo y gastos en negativo.
+ */
+export function excelSign(classification: string): 1 | -1 {
+  return classification === 'AC' ? 1 : -1;
+}
+
+/**
+ * Pares gasto/ingreso que el Excel compensa: pone el resultado neto del mes en una sola de las
+ * dos cuentas según su signo. Se comparan por el neto.
+ */
+export const NETTED_PAIRS: [string, string][] = [
+  ['846.9990', '925.9990'],
+  ['846.8880', '925.8880'],
+  ['845.9990', '924.9990'],
+  ['845.8881', '924.8881'],
+  ['845.8880', '924.8880'],
+];
+
 export interface BcCompareRow {
   displayCode: string;
   name: string;
@@ -53,7 +73,7 @@ export async function compareWithBc(
     if (!matchesPrefix(r.displayCode)) continue;
     const acc = accounts.get(r.accountId);
     const ref = acc ? refByRow.get(acc.sortOrder) : undefined;
-    const system = money(r.bcValue);
+    const system = money(r.bcValue).times(excelSign(r.classification));
     if (!ref) {
       if (system.isZero() && !treasuryCreated.has(r.accountId)) continue;
       rows.push({
@@ -71,6 +91,19 @@ export async function compareWithBc(
       status: diff.abs().lte(tolerance) ? 'OK' : explanation ? 'EXPLAINED' : 'DIFF',
       explanation,
     });
+  }
+  // Pares compensados: si el neto coincide, las dos cuentas quedan explicadas.
+  for (const [loss, gain] of NETTED_PAIRS) {
+    const a = rows.find((r) => r.displayCode === loss);
+    const b = rows.find((r) => r.displayCode === gain);
+    if (!a || !b || a.excel === null || b.excel === null) continue;
+    if (a.status === 'OK' && b.status === 'OK') continue;
+    const netExcel = money(a.excel).plus(money(b.excel));
+    const netSystem = money(a.system).plus(money(b.system));
+    if (netSystem.minus(netExcel).abs().lte(tolerance)) {
+      const reason = `El Excel compensa ${loss} y ${gain} en el mes; el neto coincide (${netSystem.toFixed(2)})`;
+      for (const r of [a, b]) if (r.status !== 'OK') Object.assign(r, { status: 'EXPLAINED' as BcStatus, explanation: r.explanation ?? reason });
+    }
   }
   const summary: Record<BcStatus, number> = { OK: 0, EXPLAINED: 0, DIFF: 0, ONLY_SYSTEM: 0 };
   rows.forEach((r) => summary[r.status]++);

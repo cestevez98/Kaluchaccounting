@@ -56,10 +56,12 @@ chown -R 1001 /opt/kaluch-data && chmod 600 /opt/kaluch-data/*.xlsx
 cd /opt/kaluch
 C="docker compose -f docker/compose.prod.yml --env-file docker/.env.prod run --rm -v /opt/kaluch-data:/data api node packages/etl/dist/cli.js"
 $C all /data/balance.xlsx                     # plan de cuentas, tasas y valores de referencia del BC
-$C treasury /data/balance.xlsx                # caja y bancos: apertura 31/03/2026, movimientos, revaluaciones (~8 min)
+$C treasury /data/balance.xlsx --revalue-until=   # caja y bancos: apertura 31/03/2026 y movimientos (~8 min)
+$C debts /data/balance.xlsx                   # deudas, proveedores y nómina; revaluaciones y reclasificación abril–octubre
+$C explain                                    # explicaciones automáticas (comprobadas al céntimo)
 $C compare /data/conciliacion.xlsx            # informe de conciliación con el BC
 ```
-La migración de tesorería se ejecuta **una sola vez** sobre una base recién importada.
+Las migraciones de tesorería y de deudas se ejecutan **una sola vez**, en ese orden, sobre una base recién importada.
 
 ## Copias de seguridad
 

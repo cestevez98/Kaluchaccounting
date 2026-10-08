@@ -75,7 +75,11 @@ Estado: **completada** (08/10/2026). Tests en verde: 65 unitarios/integración +
 | Categorías | 68 |
 | Revaluaciones | Abril a octubre de 2026 |
 
-**Conciliación abril–octubre 2026** (cuentas 101, 109–114 y las partes de efectivo de 845/846/924/925):
+**Conciliación abril–octubre 2026** (cuentas 101 y 109–114):
+
+> **Corrección (fase 3):** en la fase 2 la comparación automática solo cubrió las cuentas 101 y 109–114.
+> Las partes de efectivo de 845/846/924/925 se verifican en la fase 3 (ver [fase-3.md](fase-3.md)),
+> junto con el signo que usa el Excel en pasivos y resultados.
 
 | Estado | Cuentas |
 |---|---|

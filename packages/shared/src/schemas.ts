@@ -178,3 +178,69 @@ export const roleInputSchema = z.object({
   requires2fa: z.boolean().default(false),
   permissions: z.array(z.string()).min(1),
 });
+
+// ───────────── Contrapartes (fase 3) ─────────────
+
+export const PARTY_ROLES = ['CUSTOMER', 'SUPPLIER', 'EMPLOYEE', 'PARTNER', 'INVESTOR', 'SELLER', 'COURIER', 'LENDER', 'OTHER'] as const;
+
+export const partyInputSchema = z.object({
+  name: z.string().min(1, 'El nombre es obligatorio').max(200),
+  kind: z.enum(['PERSON', 'COMPANY']).default('PERSON'),
+  roles: z.array(z.enum(PARTY_ROLES)).default([]),
+  taxId: z.string().max(40).nullable().optional(),
+  email: z.string().email('Correo no válido').max(200).nullable().optional().or(z.literal('')),
+  phone: z.string().max(40).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  active: z.boolean().optional(),
+});
+
+export const partyAccountInputSchema = z.object({
+  companyId: uuid,
+  currency: currencySchema,
+  accountId: uuid,
+  oppositeAccountId: uuid.nullable().optional(),
+});
+
+export const partyDocumentInputSchema = z.object({
+  partyAccountId: uuid,
+  date: isoDate,
+  /** CHARGE: nos debe más / le debemos menos. CREDIT: le debemos más / nos debe menos. */
+  kind: z.enum(['CHARGE', 'CREDIT', 'ASSIGNMENT']),
+  amount: positiveDecimal,
+  counterAccountId: uuid.nullable().optional(),
+  /** Cesión: cuenta corriente que recibe la deuda. */
+  counterPartyAccountId: uuid.nullable().optional(),
+  description: z.string().min(1, 'El concepto es obligatorio').max(480),
+  reference: z.string().max(80).nullable().optional(),
+  dueDate: isoDate.nullable().optional(),
+  openItem: z.boolean().default(false),
+  segmentId: uuid.nullable().optional(),
+});
+
+export const settlementInputSchema = z.object({
+  openItemId: uuid,
+  amount: positiveDecimal,
+  date: isoDate,
+  kind: z.enum(['PAYMENT', 'WRITE_OFF']).default('PAYMENT'),
+  paymentDocumentId: uuid.nullable().optional(),
+  note: z.string().max(300).nullable().optional(),
+});
+
+export const payrollInputSchema = z.object({
+  partyAccountId: uuid,
+  date: isoDate,
+  period: z.string().regex(/^\d{4}-\d{2}$/, 'Periodo AAAA-MM'),
+  employer: z.string().min(1).max(60),
+  concept: z.string().min(1).max(120),
+  gross: positiveDecimal,
+  attendanceDeduction: decimalString.optional(),
+  mipymeDeduction: decimalString.optional(),
+  segmentId: uuid.nullable().optional(),
+  expenseAccountId: uuid.nullable().optional(),
+});
+
+export const signReclassInputSchema = z.object({
+  companyId: uuid,
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+});

@@ -5,10 +5,11 @@ ERP financiero-operativo para Grupo Kaluch. Sustituye el libro Excel
 basada en un libro diario de partida doble, multi-empresa, multi-moneda y
 multi-segmento.
 
-**Estado:** Fase 2 completada (08/10/2026): tesorería (caja, bancos, cambios, traspasos,
-extractos, revaluación), conciliación con el BC del Excel, usuarios y roles, 2FA obligatorio y
-despliegue con Docker. Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) ·
-[despliegue](docs/despliegue.md). Siguiente: fase 3 (contrapartes, proveedores y nómina).
+**Estado:** Fase 3 completada (08/10/2026): contrapartes con cuentas corrientes, cuentas por cobrar
+y por pagar, partidas abiertas y liquidaciones, cesiones de deuda, nómina y migración de las hojas de
+deudas y RRHH del Excel. Antes: fase 2 (tesorería, conciliación con el BC, usuarios, 2FA, despliegue).
+Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) · [fase 3](docs/fases/fase-3.md) ·
+[despliegue](docs/despliegue.md). Siguiente: fase 4 (exportación y distribución).
 
 ## Puesta en marcha (desarrollo)
 
@@ -29,6 +30,8 @@ Importar datos reales del Excel (nunca se sube al repositorio; `data/` está en 
 ```bash
 pnpm etl all data/balance.xlsx        # plan de cuentas + tasas + valores de referencia del BC
 pnpm etl treasury data/balance.xlsx   # caja y bancos: apertura, movimientos y revaluaciones
+pnpm etl debts data/balance.xlsx      # deudas, proveedores y nómina (después de treasury)
+pnpm etl explain                       # explicaciones automáticas de diferencias conocidas
 pnpm etl compare data/conciliacion.xlsx  # informe de conciliación con el BC
 ```
 
@@ -56,4 +59,5 @@ Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (
 | [05 · Decisiones](docs/05-decisiones-y-preguntas.md) | Decisiones técnicas y de negocio, despliegue en Hostinger, roles |
 | [Fase 1](docs/fases/fase-1.md) | Resumen de lo construido, resultado de la importación, tests y pendientes |
 | [Fase 2](docs/fases/fase-2.md) | Tesorería, migración de caja y bancos, conciliación abril–octubre |
+| [Fase 3](docs/fases/fase-3.md) | Contrapartes, CxC/CxP, nómina, migración de deudas guiada por las fórmulas del BC |
 | [Despliegue](docs/despliegue.md) | Instalación en el VPS, actualización, carga de datos y copias de seguridad |

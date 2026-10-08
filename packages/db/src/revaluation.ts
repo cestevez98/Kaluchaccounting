@@ -40,7 +40,7 @@ export async function revalueMonth(tx: Tx, companyId: string, year: number, mont
 
   const run = await tx.fxRevaluationRun.create({ data: { companyId, year, month, createdBy: userId ?? null } });
   const lines: PostLineInput[] = [];
-  const counter = new Map<string, Prisma.Decimal | ReturnType<typeof money>>();
+  const counter = new Map<string, ReturnType<typeof money>>();
   let total = money(0);
 
   for (const b of balances) {
@@ -59,17 +59,17 @@ export async function revalueMonth(tx: Tx, companyId: string, year: number, mont
     total = total.plus(diff);
     lines.push({ accountId: acc.id, currency: b.currency, amount: '0', amountUsd: diff.toFixed(4), rate, rateType: acc.revalRateType!, memo: `Revaluación a ${rate} (${acc.revalRateType})` });
     const group = TREASURY_CODES.has(acc.code) ? 'cash' : 'receivables';
-    // diff > 0: el activo vale más → ingreso por tenencia (Haber). diff < 0 → gasto.
-    const mapKey = `fx.holding.${group}.${diff.gt(0) ? 'gain' : 'loss'}`;
-    const counterId = await resolveMapping(tx, mapKey, { companyId });
-    counter.set(counterId, money(counter.get(counterId) ?? 0).minus(diff));
+    counter.set(group, money(counter.get(group) ?? 0).plus(diff));
   }
 
   if (lines.length === 0) return { run, entry: null, totalUsd: '0.0000' };
-  for (const [accountId, amount] of counter) {
-    const a = money(amount);
+  // Como el Excel, el resultado del mes se compensa por grupo (efectivo / cuentas por cobrar y pagar):
+  // neto > 0 → ingreso por tenencia (Haber); neto < 0 → gasto.
+  for (const [group, net] of counter) {
+    const a = money(net);
     if (a.isZero()) continue;
-    lines.push({ accountId, currency: FUNCTIONAL_CURRENCY, amount: a.toFixed(4), amountUsd: a.toFixed(4), memo: `Tenencia ${month}/${year}` });
+    const accountId = await resolveMapping(tx, `fx.holding.${group}.${a.gt(0) ? 'gain' : 'loss'}`, { companyId });
+    lines.push({ accountId, currency: FUNCTIONAL_CURRENCY, amount: a.neg().toFixed(4), amountUsd: a.neg().toFixed(4), memo: `Tenencia ${month}/${year}` });
   }
   const entry = await postEntry(tx, {
     companyId, entryDate: eom, kind: 'REVAL', memo: `Revaluación de saldos en moneda extranjera ${String(month).padStart(2, '0')}/${year}`,

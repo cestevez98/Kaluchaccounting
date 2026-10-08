@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AccountsController } from './accounts/accounts.controller';
 import { AdminController } from './admin/admin.controller';
 import { TreasuryController } from './treasury/treasury.controller';
+import { PartiesController } from './parties/parties.controller';
 import { AuditController } from './audit/audit.controller';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
@@ -40,7 +41,7 @@ function jwtSecret(): string {
   imports: [JwtModule.registerAsync({ useFactory: () => ({ secret: jwtSecret() }) })],
   controllers: [
     HealthController, AuthController, OrgController, AccountsController, FxController,
-    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController,
+    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController, PartiesController,
   ],
   providers: [
     PrismaService,

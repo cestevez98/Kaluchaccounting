@@ -8,7 +8,7 @@ import { basename } from 'node:path';
 import { guessKind, knownCategoryFor, normalizeReference, slug } from './categories';
 import { OMITTED_ACCOUNTS } from './coa';
 import { parseSumifs, termMatchesRow, type SumTerm } from './formula';
-import { asIsoDate, asString, readCell, type loadWorkbook } from './workbook';
+import { asIsoDate, asString, excelNumber, readCell, type loadWorkbook } from './workbook';
 
 type Workbook = Awaited<ReturnType<typeof loadWorkbook>>;
 
@@ -218,7 +218,7 @@ export async function importTreasury(prisma: PrismaClient, w: Workbook, file: st
       if (!/^(Entradas?|Salidas?) [A-Z]{3}$/.test(column)) continue;
       if (raw === null || raw === undefined || raw === '' || raw === 0) continue;
       // SUMIFS solo suma celdas numéricas: el texto (aunque parezca un número) se ignora.
-      const value = typeof raw === 'number' ? raw : Number.NaN;
+      const value = excelNumber(raw) ?? Number.NaN;
       if (typeof raw === 'string' && raw.trim() === '') continue;
       if (!Number.isFinite(value)) {
         // SUMIFS ignora las celdas con texto: se ignora el valor y se avisa.

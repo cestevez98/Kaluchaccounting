@@ -40,6 +40,7 @@ export const MODULES: Module[] = [
       { label: 'Cierre', items: [
         { href: '/periodos', label: 'Periodos', perm: 'period:read' },
         { href: '/tesoreria/revaluacion', label: 'Revaluación (tenencia)', perm: 'ledger:read' },
+        { href: '/terceros/reclasificacion', label: 'Reclasificación por signo', perm: 'parties:read' },
       ] },
       { label: 'Maestros', items: [{ href: '/plan-de-cuentas', label: 'Plan de cuentas', perm: 'accounts:read' }] },
     ],
@@ -58,15 +59,52 @@ export const MODULES: Module[] = [
     ],
   },
   { key: 'ventas', icon: '🛒', label: 'Ventas', href: '#', phase: 4 },
-  { key: 'cobrar', icon: '📥', label: 'Cuentas por Cobrar', href: '#', phase: 3 },
-  { key: 'compras', icon: '📦', label: 'Compras', href: '#', phase: 3 },
-  { key: 'pagar', icon: '📤', label: 'Cuentas por Pagar', href: '#', phase: 3 },
-  { key: 'terceros', icon: '👥', label: 'Terceros', href: '#', phase: 3 },
+  {
+    key: 'cobrar', icon: '📥', label: 'Cuentas por Cobrar', href: '/cobrar', perm: 'parties:read',
+    groups: [{ label: 'Cuentas por cobrar', items: [
+      { href: '/cobrar', label: 'Saldos y antigüedad', perm: 'parties:read' },
+      { href: '/cobrar/partidas', label: 'Partidas por cobrar', perm: 'parties:read' },
+    ] }],
+  },
+  {
+    key: 'compras', icon: '📦', label: 'Compras', href: '/pagar/partidas', perm: 'parties:read',
+    groups: [{ label: 'Proveedores', items: [
+      { href: '/pagar/partidas', label: 'Facturas de proveedores', perm: 'parties:read' },
+      { href: '/terceros/documento?tipo=factura', label: 'Registrar factura', perm: 'parties:manage' },
+    ] }],
+  },
+  {
+    key: 'pagar', icon: '📤', label: 'Cuentas por Pagar', href: '/pagar', perm: 'parties:read',
+    groups: [{ label: 'Cuentas por pagar', items: [
+      { href: '/pagar', label: 'Saldos y antigüedad', perm: 'parties:read' },
+      { href: '/pagar/partidas', label: 'Partidas por pagar', perm: 'parties:read' },
+    ] }],
+  },
+  {
+    key: 'terceros', icon: '👥', label: 'Terceros', href: '/terceros', perm: 'parties:read',
+    groups: [
+      { label: 'Contrapartes', items: [
+        { href: '/terceros', label: 'Listado', perm: 'parties:read' },
+        { href: '/terceros/nuevo', label: 'Nueva contraparte', perm: 'parties:manage' },
+      ] },
+      { label: 'Operaciones', items: [
+        { href: '/terceros/documento', label: 'Cargo, abono o cesión', perm: 'parties:manage' },
+        { href: '/terceros/reclasificacion', label: 'Reclasificación por signo', perm: 'parties:read' },
+      ] },
+    ],
+  },
   { key: 'inventario', icon: '🗄️', label: 'Inventario', href: '#', phase: 4 },
   { key: 'inversiones', icon: '📈', label: 'Inversiones', href: '#', phase: 4 },
   { key: 'financiamientos', icon: '💰', label: 'Financiamientos', href: '#', phase: 5 },
   { key: 'impuestos', icon: '🧾', label: 'Impuestos', href: '#', phase: 5 },
-  { key: 'rrhh', icon: '🧑‍💼', label: 'RRHH', href: '#', phase: 3 },
+  {
+    key: 'rrhh', icon: '🧑‍💼', label: 'RRHH', href: '/rrhh', perm: 'parties:read',
+    groups: [{ label: 'Nómina', items: [
+      { href: '/rrhh', label: 'Nóminas', perm: 'parties:read' },
+      { href: '/rrhh/nueva', label: 'Nueva nómina', perm: 'payroll:manage' },
+      { href: '/terceros?role=EMPLOYEE', label: 'Trabajadores', perm: 'parties:read' },
+    ] }],
+  },
   { key: 'reportes', icon: '📊', label: 'Reportes', href: '#', phase: 6 },
   {
     key: 'configuracion', icon: '⚙️', label: 'Configuración', href: '/tasas',

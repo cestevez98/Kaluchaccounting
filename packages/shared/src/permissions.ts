@@ -20,6 +20,9 @@ export const PERMISSIONS = {
   'period:reopen': 'Reabrir periodos bloqueados',
   'reports:financial': 'Reportes financieros (BC, ES, ER, EFE)',
   'audit:read': 'Consultar auditoría',
+  'parties:read': 'Consultar contrapartes, cuentas corrientes y estados de cuenta',
+  'parties:manage': 'Contrapartes: alta, cargos, abonos, cesiones y liquidaciones',
+  'payroll:manage': 'Registrar nóminas',
   // Fases siguientes (se declaran ya para poder asignarlos a roles)
   'cash:operate': 'Operar caja',
   'bank:reconcile': 'Conciliación bancaria y traspasos',
@@ -38,7 +41,7 @@ export interface SeedRole {
 }
 
 const READ_ALL: Permission[] = [
-  'accounts:read', 'fx:read', 'ledger:read', 'period:read', 'reports:financial',
+  'accounts:read', 'fx:read', 'ledger:read', 'period:read', 'reports:financial', 'parties:read',
 ];
 
 export const SEED_ROLES: SeedRole[] = [
@@ -50,7 +53,7 @@ export const SEED_ROLES: SeedRole[] = [
     permissions: [
       ...READ_ALL, 'accounts:manage', 'fx:manage', 'ledger:post', 'ledger:reverse',
       'ledger:post_soft_closed', 'period:close', 'period:lock', 'audit:read', 'bank:reconcile',
-      'tax:manage',
+      'tax:manage', 'parties:manage', 'payroll:manage',
     ],
   },
   { name: 'Cajero', description: 'Operación de caja', requires2fa: false, permissions: ['fx:read', 'cash:operate'] },
@@ -58,7 +61,7 @@ export const SEED_ROLES: SeedRole[] = [
     name: 'Conciliador',
     description: 'Extractos, conciliación y traspasos',
     requires2fa: false,
-    permissions: ['fx:read', 'accounts:read', 'ledger:read', 'bank:reconcile'],
+    permissions: ['fx:read', 'accounts:read', 'ledger:read', 'bank:reconcile', 'parties:read', 'parties:manage'],
   },
   {
     name: 'Fiscal',
@@ -66,7 +69,7 @@ export const SEED_ROLES: SeedRole[] = [
     requires2fa: false,
     permissions: [...READ_ALL, 'tax:manage'],
   },
-  { name: 'Comercial y Ventas', description: 'Facturación y cobros', requires2fa: false, permissions: ['fx:read', 'sales:operate'] },
+  { name: 'Comercial y Ventas', description: 'Facturación y cobros', requires2fa: false, permissions: ['fx:read', 'sales:operate', 'parties:read'] },
   { name: 'Almacén', description: 'Inventario y contenedores', requires2fa: false, permissions: ['inventory:operate'] },
   { name: 'Solo lectura', description: 'Consulta de reportes', requires2fa: false, permissions: READ_ALL },
 ];
