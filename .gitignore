@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+# Datos reales: nunca al repositorio
+data/
+*.xlsx
+*.xls
+*.csv
