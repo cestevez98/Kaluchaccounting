@@ -79,11 +79,12 @@ if [ ! -f /root/.kaluch-admin-created ]; then
   docker compose -f docker/compose.prod.yml --env-file docker/.env.prod exec -T \
     -e ADMIN_EMAIL="$ADMIN_EMAIL" -e ADMIN_PASSWORD="$PASS" api node packages/db/dist/seed/base.js
   touch /root/.kaluch-admin-created
+  ( umask 077; printf 'Usuario: %s\nContraseña inicial: %s\nCámbiala al entrar y borra este fichero: rm %s\n' "$ADMIN_EMAIL" "$PASS" /root/kaluch-admin-inicial.txt > /root/kaluch-admin-inicial.txt )
   echo
   echo "=================================================================="
   echo " Kaluch ERP listo en https://$DOMAIN"
   echo " Usuario inicial: $ADMIN_EMAIL"
-  echo " Contraseña inicial (cámbiala y guárdala en tu gestor): $PASS"
+  echo " Contraseña inicial: en /root/kaluch-admin-inicial.txt (solo root). Cámbiala al entrar."
   echo " Al entrar se te pedirá activar la verificación en dos pasos."
   echo "=================================================================="
 else
