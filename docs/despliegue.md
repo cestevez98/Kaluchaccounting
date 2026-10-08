@@ -48,6 +48,14 @@ API. No borra datos.
 
 ## Cargar los datos reales del Excel
 
+**Desde la aplicación (recomendado):** Configuración → **Importar Excel** (solo administradores).
+Subes "Balance de comprobación.xlsx" y la aplicación ejecuta toda la migración en segundo plano, en unos 10–15
+minutos: plan de cuentas, tasas, caja y bancos, deudas, proveedores y nómina, y conciliación. La pantalla
+muestra el avance y el registro, y el archivo se borra del servidor al terminar. La migración completa
+solo se puede hacer una vez, sobre una base vacía; después, la misma pantalla sirve para actualizar las tasas.
+
+**Por consola** (alternativa):
+
 ```bash
 mkdir -p /opt/kaluch-data && chmod 700 /opt/kaluch-data
 # Sube el Excel desde tu ordenador:  scp "Balance de comprobación.xlsx" root@187.7.70.196:/opt/kaluch-data/balance.xlsx

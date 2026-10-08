@@ -126,3 +126,20 @@ describe('contrapartes (API)', () => {
     expect(runs.body[0]).toMatchObject({ year: 2026, month: 9 });
   });
 });
+
+describe('importación del Excel (API)', () => {
+  it('solo administradores, solo .xlsx y no repite la migración completa', async () => {
+    const ro = await login('lectura@kaluch.local');
+    expect((await http().get('/api/v1/admin/import').set('Cookie', ro)).status).toBe(403);
+    const st = await http().get('/api/v1/admin/import').set('Cookie', cookie);
+    expect(st.status).toBe(200);
+    expect(st.body.data.accounts).toBeGreaterThan(0);
+    const bad = await http().post('/api/v1/admin/import').set('Cookie', cookie).field('mode', 'full').attach('file', Buffer.from('hola'), 'datos.csv');
+    expect(bad.body).toMatchObject({ code: 'VALIDATION' });
+    // La base de test ya tiene documentos de contrapartes: la migración completa se rechaza.
+    const zip = Buffer.concat([Buffer.from('PK'), Buffer.alloc(10)]);
+    const again = await http().post('/api/v1/admin/import').set('Cookie', cookie).field('mode', 'full').attach('file', zip, 'balance.xlsx');
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('ALREADY_IMPORTED');
+  });
+});

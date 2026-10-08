@@ -112,6 +112,7 @@ export const MODULES: Module[] = [
       { label: 'General', items: [
         { href: '/tasas', label: 'Tasas de cambio', perm: 'fx:read' },
         { href: '/admin/usuarios', label: 'Usuarios y roles', perm: 'admin:users' },
+        { href: '/admin/importar', label: 'Importar Excel', perm: 'admin:settings' },
         { href: '/seguridad', label: 'Mi seguridad (2FA)' },
       ] },
     ],

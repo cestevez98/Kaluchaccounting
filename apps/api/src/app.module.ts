@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AccountsController } from './accounts/accounts.controller';
 import { AdminController } from './admin/admin.controller';
+import { ImportController } from './admin/import.controller';
 import { TreasuryController } from './treasury/treasury.controller';
 import { PartiesController } from './parties/parties.controller';
 import { AuditController } from './audit/audit.controller';
@@ -41,7 +42,7 @@ function jwtSecret(): string {
   imports: [JwtModule.registerAsync({ useFactory: () => ({ secret: jwtSecret() }) })],
   controllers: [
     HealthController, AuthController, OrgController, AccountsController, FxController,
-    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController, PartiesController,
+    PeriodsController, JournalController, ReportsController, AuditController, TreasuryController, AdminController, PartiesController, ImportController,
   ],
   providers: [
     PrismaService,

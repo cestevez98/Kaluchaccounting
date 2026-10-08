@@ -19,7 +19,10 @@ const STATUS = {
 } as const;
 
 const PRESETS = [
-  { label: 'Caja y bancos (fase 2)', codes: '101,109,110,111,112,113,114' },
+  { label: 'Migradas (fases 2 y 3)', codes: '101,109,110,111,112,113,114,135,146,405,406,407,408,409,410,411,412,413,455,699,845,846,924,925' },
+  { label: 'Caja y bancos', codes: '101,109,110,111,112,113,114' },
+  { label: 'Deudas, proveedores y nómina', codes: '135,146,405,406,407,408,409,410,411,412,413,455,699' },
+  { label: 'Diferencias de cambio y tenencia', codes: '845,846,924,925' },
   { label: 'Todas las cuentas', codes: '' },
 ];
 
