@@ -74,6 +74,28 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
+echo "    Actualización automática cada 10 minutos (rama $BRANCH)"
+echo "$BRANCH" > /etc/kaluch-branch
+cat > /etc/systemd/system/kaluch-update.service <<UNIT
+[Unit]
+Description=Kaluch ERP - actualización automática
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash $DIR/docker/auto-update.sh
+UNIT
+cat > /etc/systemd/system/kaluch-update.timer <<UNIT
+[Unit]
+Description=Kaluch ERP - comprobar actualizaciones cada 10 minutos
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now kaluch-update.timer >/dev/null 2>&1
+
 if [ ! -f /root/.kaluch-admin-created ]; then
   PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)"
   docker compose -f docker/compose.prod.yml --env-file docker/.env.prod exec -T \

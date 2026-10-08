@@ -40,6 +40,12 @@ El cortafuegos (ufw) solo admite SSH, HTTP y HTTPS.
 
 ## Actualizar a una versión nueva
 
+**Automático:** el servidor comprueba cada 10 minutos si hay commits nuevos en la rama desplegada y, si
+los hay, reconstruye y reinicia (no lo hace mientras hay una importación del Excel en curso). Registro:
+`journalctl -u kaluch-update`. Para desactivarlo: `systemctl disable --now kaluch-update.timer`.
+
+**Manual:**
+
 ```bash
 cd /opt/kaluch && BRANCH=main bash docker/bootstrap-vps.sh
 ```
