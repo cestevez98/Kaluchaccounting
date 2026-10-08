@@ -74,7 +74,7 @@ test('conciliación con el Excel y revaluación son accesibles', async ({ page }
   await page.goto('/tesoreria/revaluacion');
   await page.getByLabel('Mes').selectOption({ label: 'Junio' });
   await page.getByLabel('Año').fill('2026');
-  await page.getByRole('button', { name: /Revaluar Junio 2026/ }).click();
+  await page.getByRole('button', { name: /Revaluar y cerrar Junio 2026/ }).click();
   await expect(page.getByText(/Revaluación de Junio 2026 registrada/)).toBeVisible();
 });
 

@@ -5,7 +5,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import {
-  autoReconcile, importStatement, matchStatementLine, postTreasuryMovement, reclassifyMovement, revalueMonth,
+  autoReconcile, closeFxTransits, importStatement, matchStatementLine, postTreasuryMovement, reclassifyBySign, reclassifyMovement, revalueMonth,
   setStatementLineStatus, toDate, voidTreasuryMovement, withTx, type Prisma,
 } from '@kaluch/db';
 import {
@@ -281,14 +281,24 @@ export class TreasuryController {
   @RequirePermission('ledger:post')
   async revalue(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const b = parse(revaluationInputSchema, body);
-    const companyIds = b.companyId ? [b.companyId] : (await this.prisma.treasuryAccount.findMany({ distinct: ['companyId'], select: { companyId: true } })).map((t) => t.companyId);
+    const companyIds = b.companyId ? [b.companyId] : [...new Set([
+      ...(await this.prisma.treasuryAccount.findMany({ distinct: ['companyId'], select: { companyId: true } })).map((t) => t.companyId),
+      ...(await this.prisma.partyAccount.findMany({ distinct: ['companyId'], select: { companyId: true } })).map((t) => t.companyId),
+    ])];
     const out = [];
     for (const companyId of companyIds) {
       if (!can(user, 'ledger:post', companyId)) continue;
-      const r = await withTx(this.prisma, { userId: user.id, allowSoftClosed: can(user, 'ledger:post_soft_closed', companyId), timeoutMs: 120_000 }, (tx) =>
-        revalueMonth(tx, companyId, b.year, b.month, user.id),
-      );
-      out.push({ companyId, runId: r.run.id, entryId: r.entry?.id ?? null, totalUsd: r.totalUsd });
+      // Cierre de mes: revaluación, regularización de transitorias de tesorería y reclasificación por signo.
+      const r = await withTx(this.prisma, { userId: user.id, allowSoftClosed: can(user, 'ledger:post_soft_closed', companyId), timeoutMs: 300_000 }, async (tx) => {
+        const rv = await revalueMonth(tx, companyId, b.year, b.month, user.id);
+        const tr = await closeFxTransits(tx, companyId, b.year, b.month, user.id);
+        const rc = await reclassifyBySign(tx, companyId, b.year, b.month, user.id);
+        return { rv, tr, rc };
+      });
+      out.push({
+        companyId, runId: r.rv.run.id, entryId: r.rv.entry?.id ?? null, totalUsd: r.rv.totalUsd,
+        transitsClosed: r.tr.result, reclassUsd: r.rc.movedUsd,
+      });
     }
     return out;
   }

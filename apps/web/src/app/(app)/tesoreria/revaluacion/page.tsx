@@ -26,7 +26,7 @@ export default function RevaluationPage() {
     <div>
       <PageHeader
         title="Revaluación de fin de mes (tenencia)"
-        subtitle="Lleva el saldo en USD de cada cuenta en moneda extranjera a saldo / tasa de cierre del tipo de tasa de la cuenta. La diferencia va a 846/925. Repetir un mes anula la corrida anterior y recalcula."
+        subtitle="Cierre de mes: lleva el saldo en USD de cada cuenta en moneda extranjera (caja, bancos y cuentas corrientes) a saldo / tasa de cierre, con la diferencia en 846/925; regulariza las transitorias de cambios y traspasos con una sola pata (845/924) y reclasifica por signo las cuentas corrientes (135 ↔ 405). Repetir un mes recalcula."
       />
       {can('ledger:post') && (
         <div className="card mb-4 flex flex-wrap items-end gap-3 p-3">
@@ -54,7 +54,7 @@ export default function RevaluationPage() {
               }
             }}
           >
-            {busy ? 'Revaluando…' : `Revaluar ${MONTH_NAMES[month - 1]} ${year}`}
+            {busy ? 'Cerrando…' : `Revaluar y cerrar ${MONTH_NAMES[month - 1]} ${year}`}
           </button>
         </div>
       )}

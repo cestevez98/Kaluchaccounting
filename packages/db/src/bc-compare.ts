@@ -20,6 +20,8 @@ export function excelSign(classification: string): 1 | -1 {
  * dos cuentas según su signo. Se comparan por el neto.
  */
 export const NETTED_PAIRS: [string, string][] = [
+  ['845', '924'],
+  ['846', '925'],
   ['846.9990', '925.9990'],
   ['846.8880', '925.8880'],
   ['845.9990', '924.9990'],
@@ -67,13 +69,20 @@ export async function compareWithBc(
   const explain = (code: string) =>
     explanations.find((e) => e.fullCode === code && (e.year === null || e.year === p.year) && (e.month === null || e.month === p.month))?.reason ?? null;
 
+  // Las cuentas de sistema (699.999x) no existen en el Excel: no cuentan en el total de su grupo.
+  const systemAccounts = new Set([...accounts.entries()].filter(([, a]) => a.anomaly?.startsWith('Cuenta de sistema')).map(([id]) => id));
+  const systemByParent = new Map<string, ReturnType<typeof money>>();
+  for (const r of tb.rows) {
+    if (!systemAccounts.has(r.accountId) || !r.parentId) continue;
+    systemByParent.set(r.parentId, money(systemByParent.get(r.parentId) ?? 0).plus(money(r.bcValue)));
+  }
   const matchesPrefix = (code: string) => !p.codePrefixes?.length || p.codePrefixes.some((pre) => code === pre || code.startsWith(`${pre}.`));
   const rows: BcCompareRow[] = [];
   for (const r of tb.rows) {
     if (!matchesPrefix(r.displayCode)) continue;
     const acc = accounts.get(r.accountId);
     const ref = acc ? refByRow.get(acc.sortOrder) : undefined;
-    const system = money(r.bcValue).times(excelSign(r.classification));
+    const system = money(r.bcValue).minus(systemByParent.get(r.accountId) ?? 0).times(excelSign(r.classification));
     if (!ref) {
       if (system.isZero() && !treasuryCreated.has(r.accountId)) continue;
       rows.push({

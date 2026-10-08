@@ -106,8 +106,14 @@ export async function explainHoldingDifferences(prisma: PrismaClient, p: { from:
       const parts = [`caja CAD omitida (decisión P3; el Excel la valora a la tasa MLC): ${cad.toFixed(2)} USD`];
       if (mine.length) parts.push(`${mine.length} filas con "Movimiento en USD" vacío o en error en el Excel, que su tenencia no descuenta: ${brokenUsd.toFixed(2)} USD (${mine.map((b) => b.ref).join(', ')})`);
       const reason = `[auto] Tenencia de efectivo ${String(m).padStart(2, '0')}/${y}: Excel ${excelNet.toFixed(2)} = sistema ${systemNet.toFixed(2)} + ${parts.join(' + ')}`;
+      const codes = ['846.9990', '925.9990'];
+      // Los totales 846/925 incluyen además las cuentas por cobrar: si esa parte cuadra, la misma explicación vale.
+      const hl = get('846');
+      const hg = get('925');
+      const headerDiff = money(hl?.system ?? 0).plus(money(hg?.system ?? 0)).minus(money(hl?.excel ?? 0)).minus(money(hg?.excel ?? 0));
+      if (headerDiff.minus(systemNet.minus(excelNet)).abs().lte(0.01)) codes.push('846', '925');
       await prisma.bcExplanation.createMany({
-        data: ['846.9990', '925.9990'].map((fullCode) => ({ fullCode, year: y, month: m, reason, approved: true })),
+        data: codes.map((fullCode) => ({ fullCode, year: y, month: m, reason, approved: true })),
       });
     }
     results.push({ month, excelNet: excelNet.toFixed(2), systemNet: systemNet.toFixed(2), cad: cad.toFixed(2), broken: brokenUsd.toFixed(2), residual: residual.toFixed(2), explained });

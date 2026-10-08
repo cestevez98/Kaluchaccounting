@@ -290,3 +290,8 @@ export function isNegationOf(a: LinearForm, b: LinearForm): boolean {
   const mb = new Map(nb.terms.map((t) => [termKey(t), t.coef]));
   return na.terms.every((t) => Math.abs((mb.get(termKey(t)) ?? 0) + t.coef) < 1e-12);
 }
+
+/** Misma forma (pares gasto/ingreso del Excel: ambos usan el resultado del mes con el mismo signo). */
+export function isSameForm(a: LinearForm, b: LinearForm): boolean {
+  return isNegationOf(a, { ...b, terms: b.terms.map((t) => ({ ...t, coef: -t.coef })) });
+}

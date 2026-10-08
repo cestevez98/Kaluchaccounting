@@ -1,7 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  compareWithBc, postTreasuryMovement, reclassifyMovement, revalueMonth, seedDemo, trialBalance,
+  closeFxTransits, compareWithBc, postTreasuryMovement, reclassifyMovement, revalueMonth, seedDemo, trialBalance,
   voidTreasuryMovement, withTx, type TreasuryMovementInput,
 } from '../src';
 
@@ -88,6 +88,19 @@ describe('tesorería', () => {
     });
     const lines = await prisma.journalLine.findMany({ where: { entryId: r.entry.id } });
     expect(lines.some((l) => l.accountId === acc['699.9996'])).toBe(true);
+  });
+
+  it('el cierre de mes lleva el saldo de la transitoria a diferencias de cambio y es idempotente', async () => {
+    // Entraron 20 USD por un cambio cuya otra pata no está: la transitoria queda acreedora → ganancia.
+    const before = await prisma.journalLine.aggregate({ where: { accountId: acc['699.9996'], companyId: dm }, _sum: { amountUsd: true } });
+    expect(before._sum.amountUsd?.toFixed(4)).toBe('-20.0000');
+    const r = await withTx(prisma, {}, (tx) => closeFxTransits(tx, dm, 2026, 8));
+    expect(r.result).toEqual([{ transit: 'treasury.exchange.transit', closedUsd: '-20.0000' }]);
+    const after = await prisma.journalLine.aggregate({ where: { accountId: acc['699.9996'], companyId: dm }, _sum: { amountUsd: true } });
+    expect(after._sum.amountUsd?.toFixed(4)).toBe('0.0000');
+    const gain = await prisma.journalLine.aggregate({ where: { accountId: acc['924.0001'], entryId: r.entry!.id }, _sum: { amountUsd: true } });
+    expect(gain._sum.amountUsd?.toFixed(4)).toBe('-20.0000');
+    expect((await withTx(prisma, {}, (tx) => closeFxTransits(tx, dm, 2026, 8))).entry).toBeNull();
   });
 
   it('las patas deben ser de la empresa del movimiento', async () => {

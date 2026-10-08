@@ -9,6 +9,7 @@ const TREASURY_CODES = new Set(['101', '109', '110', '111', '112', '113', '114']
 interface BalanceRow {
   account_id: string;
   currency: string;
+  party_id: string | null;
   orig: Prisma.Decimal;
   usd: Prisma.Decimal;
 }
@@ -27,13 +28,14 @@ export async function revalueMonth(tx: Tx, companyId: string, year: number, mont
   }
 
   const eom = endOfMonth(year, month);
-  const key = year * 100 + month;
+  // Por cuenta, moneda y contraparte: en las cuentas corrientes el ajuste lleva su contraparte
+  // (así el estado de cuenta en USD y la reclasificación por signo lo incluyen).
   const balances = await tx.$queryRaw<BalanceRow[]>`
-    SELECT lb.account_id, lb.currency, sum(lb.amount_orig) AS orig, sum(lb.debit_usd - lb.credit_usd) AS usd
-    FROM ledger_balance lb JOIN account a ON a.id = lb.account_id
-    WHERE lb.company_id = ${companyId}::uuid AND lb.book = 'BASE' AND lb.year * 100 + lb.month <= ${key}
-      AND a.reval_rate_type IS NOT NULL AND lb.currency <> ${FUNCTIONAL_CURRENCY}
-    GROUP BY lb.account_id, lb.currency`;
+    SELECT jl.account_id, jl.currency, jl.party_id, sum(jl.amount) AS orig, sum(jl.amount_usd) AS usd
+    FROM journal_line jl JOIN journal_entry je ON je.id = jl.entry_id JOIN account a ON a.id = jl.account_id
+    WHERE jl.company_id = ${companyId}::uuid AND je.book = 'BASE' AND jl.entry_date <= ${toDate(eom)}::date
+      AND a.reval_rate_type IS NOT NULL AND jl.currency <> ${FUNCTIONAL_CURRENCY}
+    GROUP BY jl.account_id, jl.currency, jl.party_id`;
   const accounts = new Map(
     (await tx.account.findMany({ where: { id: { in: balances.map((b) => b.account_id) } } })).map((a) => [a.id, a]),
   );
@@ -57,7 +59,7 @@ export async function revalueMonth(tx: Tx, companyId: string, year: number, mont
     });
     if (diff.isZero()) continue;
     total = total.plus(diff);
-    lines.push({ accountId: acc.id, currency: b.currency, amount: '0', amountUsd: diff.toFixed(4), rate, rateType: acc.revalRateType!, memo: `Revaluación a ${rate} (${acc.revalRateType})` });
+    lines.push({ accountId: acc.id, currency: b.currency, amount: '0', amountUsd: diff.toFixed(4), rate, rateType: acc.revalRateType!, partyId: b.party_id, memo: `Revaluación a ${rate} (${acc.revalRateType})` });
     const group = TREASURY_CODES.has(acc.code) ? 'cash' : 'receivables';
     counter.set(group, money(counter.get(group) ?? 0).plus(diff));
   }
@@ -77,4 +79,42 @@ export async function revalueMonth(tx: Tx, companyId: string, year: number, mont
   });
   await tx.fxRevaluationRun.update({ where: { id: run.id }, data: { entryId: entry.id, totalUsd: total.toFixed(4) } });
   return { run, entry, totalUsd: total.toFixed(4) };
+}
+
+const TRANSIT_CLOSING_MEMO = 'Regularización de transitoria de tesorería';
+
+/**
+ * Cierre mensual de las transitorias de tesorería: el saldo que dejan los cambios y traspasos
+ * registrados con una sola pata (699.9996 / 699.0003) se lleva a diferencias de cambio realizadas
+ * (845/924 · Cambios y Traspasos), como hace el Excel con las filas "Cambio" y "Traspaso" del mes.
+ * Solo se cierra lo que procede de movimientos de tesorería. Idempotente: si no queda saldo, no hace nada.
+ */
+export async function closeFxTransits(tx: Tx, companyId: string, year: number, month: number, userId?: string | null) {
+  const eom = endOfMonth(year, month);
+  const lines: PostLineInput[] = [];
+  const result: { transit: string; closedUsd: string }[] = [];
+  for (const [transitKey, fxKey] of [['treasury.exchange.transit', 'fx.realized.exchange'], ['treasury.transfer.transit', 'fx.realized.transfer']] as const) {
+    const transitId = await resolveMapping(tx, transitKey, { companyId });
+    const [row] = await tx.$queryRaw<{ usd: Prisma.Decimal | null }[]>`
+      SELECT sum(jl.amount_usd) AS usd
+      FROM journal_line jl JOIN journal_entry je ON je.id = jl.entry_id
+      WHERE jl.company_id = ${companyId}::uuid AND jl.account_id = ${transitId}::uuid AND je.book = 'BASE'
+        AND jl.entry_date <= ${toDate(eom)}::date
+        AND (je.document_id IN (SELECT id FROM treasury_movement) OR (je.kind = 'CLOSING' AND jl.memo = ${TRANSIT_CLOSING_MEMO}))`;
+    const balance = roundAmount(money(row?.usd ?? 0));
+    if (balance.isZero()) continue;
+    // Saldo deudor: salió más valor del que entró → pérdida (Debe en 845); acreedor → ganancia (Haber en 924).
+    const fxId = await resolveMapping(tx, `${fxKey}.${balance.gt(0) ? 'loss' : 'gain'}`, { companyId });
+    lines.push(
+      { accountId: transitId, currency: FUNCTIONAL_CURRENCY, amount: balance.neg().toFixed(4), amountUsd: balance.neg().toFixed(4), memo: TRANSIT_CLOSING_MEMO },
+      { accountId: fxId, currency: FUNCTIONAL_CURRENCY, amount: balance.toFixed(4), amountUsd: balance.toFixed(4), memo: TRANSIT_CLOSING_MEMO },
+    );
+    result.push({ transit: transitKey, closedUsd: balance.toFixed(4) });
+  }
+  if (lines.length === 0) return { entry: null, result };
+  const entry = await postEntry(tx, {
+    companyId, entryDate: eom, kind: 'CLOSING', createdBy: userId ?? null,
+    memo: `Regularización de cambios y traspasos con una sola pata ${String(month).padStart(2, '0')}/${year}`, lines,
+  });
+  return { entry, result };
 }
