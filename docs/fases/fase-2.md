@@ -109,5 +109,5 @@ El Excel ignora las celdas de texto en SUMIFS. La migración hace lo mismo: por 
 
 ## Pendiente / a decidir
 - **Titular de `Efectivo_Caja`**: se ha importado a nombre de GR. Si es otra empresa, se cambia con `--cash-company` y se vuelve a migrar.
-- **Copia de seguridad fuera del servidor**: falta elegir el destino (B2, S3 o Google Drive).
+- **Copia de seguridad fuera del servidor**: Google Drive, cifrada (`docker/setup-gdrive.sh`, ver [despliegue](../despliegue.md)). Falta ejecutarla en el VPS.
 - La bandeja de revisión se vaciará al mapear las categorías `Deuda*` a contrapartes en la fase 3.

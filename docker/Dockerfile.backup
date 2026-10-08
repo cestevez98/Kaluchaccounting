@@ -1,0 +1,5 @@
+# Copias de seguridad: pg_dump diario + subida cifrada fuera del servidor con rclone (Google Drive).
+FROM public.ecr.aws/docker/library/postgres:16-alpine
+RUN apk add --no-cache rclone
+COPY docker/backup.sh /backup.sh
+ENTRYPOINT ["sh", "/backup.sh"]

@@ -58,10 +58,12 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
-  # Copia diaria con pg_dump (formato custom, comprimido). Retención: BACKUP_KEEP_DAYS.
-  # Las copias quedan en el volumen "backups"; sincronízalas fuera del servidor (ver docs/despliegue.md).
+  # Copia diaria con pg_dump (formato custom, comprimido). Retención local: BACKUP_KEEP_DAYS.
+  # Si se ha ejecutado docker/setup-gdrive.sh, cada copia se sube cifrada a Google Drive
+  # (retención OFFSITE_KEEP_DAYS). Ver docs/despliegue.md.
   backup:
-    image: public.ecr.aws/docker/library/postgres:16-alpine
+    build: { context: .., dockerfile: docker/Dockerfile.backup }
+    image: kaluch-backup
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -71,10 +73,11 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: ${POSTGRES_DB}
       KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      OFFSITE_KEEP_DAYS: ${OFFSITE_KEEP_DAYS:-180}
+      RCLONE_CONFIG: /config/rclone/rclone.conf
     volumes:
       - backups:/backups
-      - ./backup.sh:/backup.sh:ro
-    entrypoint: ['sh', '/backup.sh']
+      - ./rclone:/config/rclone
 
 volumes:
   pgdata:

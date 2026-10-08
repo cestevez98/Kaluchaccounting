@@ -63,20 +63,46 @@ La migración de tesorería se ejecuta **una sola vez** sobre una base recién i
 
 ## Copias de seguridad
 
-- **Diarias** (`pg_dump`, formato custom), en el volumen `backups`, con 30 días de retención.
-- **Instantáneas semanales del VPS** desde el panel de Hostinger (*Backups y monitoreo*). Conviene
-  activarlas.
-- **Copia fuera del servidor (recomendado):** sincronizar el volumen de copias con un almacenamiento
-  externo (Backblaze B2, S3 o Google Drive con `rclone`). Hace falta crear la cuenta de destino: dime
-  cuál prefieres y lo dejo configurado.
+| Nivel | Qué | Retención |
+|---|---|---|
+| 1 | `pg_dump` diario en el servidor (volumen `backups`) | 30 días (`BACKUP_KEEP_DAYS`) |
+| 2 | La misma copia, **cifrada**, en **Google Drive** | 180 días (`OFFSITE_KEEP_DAYS`) |
+| 3 | Instantáneas semanales del VPS (panel de Hostinger → *Backups y monitoreo*) | Las de Hostinger |
 
-Restaurar una copia:
+### Activar la copia en Google Drive (una vez, ≈ 5 minutos)
+```bash
+cd /opt/kaluch && bash docker/setup-gdrive.sh
+```
+El script te guía:
+1. En **tu ordenador** descargas rclone (https://rclone.org/downloads/) y ejecutas
+   `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"`. Se abre el navegador,
+   entras con la cuenta de Google y aceptas. El permiso es `drive.file`: solo da acceso a los
+   archivos que crea la propia copia, no al resto de tu Drive.
+2. Pegas en la **consola del servidor** el texto que muestra la terminal. No se pega en ningún chat.
+3. El script crea la carpeta **"Kaluch ERP - copias de seguridad"** en Drive, prueba la subida y
+   muestra **dos contraseñas de cifrado una sola vez**. Guárdalas en tu gestor de contraseñas: sin
+   ellas no se pueden descifrar las copias si se pierde el servidor.
+
+Las copias se cifran en el servidor antes de salir (rclone crypt: contenido y nombres), así que
+Google no puede leerlas. Se suben con `copy` y no con `sync`: borrar algo en el servidor nunca borra
+la copia de Drive. El registro está en `docker compose ... logs backup`.
+
+### Restaurar
+Desde una copia del servidor:
 ```bash
 cd /opt/kaluch
-docker compose -f docker/compose.prod.yml --env-file docker/.env.prod exec backup ls -lh /backups
-docker compose -f docker/compose.prod.yml --env-file docker/.env.prod exec backup \
-  pg_restore --clean --if-exists -d "$POSTGRES_DB" /backups/kaluch-AAAAMMDD-HHMMSS.dump
+C="docker compose -f docker/compose.prod.yml --env-file docker/.env.prod"
+$C exec backup ls -lh /backups
+$C exec backup sh -c 'pg_restore --clean --if-exists -d "$PGDATABASE" /backups/kaluch-AAAAMMDD-HHMMSS.dump'
 ```
+Desde Google Drive (por ejemplo, en un servidor nuevo): instala con `bootstrap-vps.sh` y ejecuta
+`setup-gdrive.sh` con las contraseñas guardadas, en lugar de generar unas nuevas:
+```bash
+CRYPT_PASSWORD='...' CRYPT_SALT='...' bash docker/setup-gdrive.sh
+$C run --rm --entrypoint rclone backup ls kaluch-cifrado:
+$C run --rm --entrypoint rclone backup copy kaluch-cifrado:kaluch-AAAAMMDD-HHMMSS.dump /backups/
+```
+y después el `pg_restore` anterior.
 
 ## Seguridad aplicada
 
