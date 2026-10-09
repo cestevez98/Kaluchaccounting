@@ -29,6 +29,8 @@ if ! $C up -d --build --remove-orphans; then
   echo "ERROR: la construcción o el arranque han fallado; se reintentará en la próxima pasada" >&2
   exit 1
 fi
+# El Caddyfile va montado como archivo: Caddy lo vuelve a leer sin cortar las conexiones.
+$C exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || echo "Aviso: no se pudo recargar Caddy" >&2
 echo "$REMOTE" > "$DEPLOYED_FILE"
 docker image prune -f >/dev/null
 echo "Actualizado a ${REMOTE:0:7}"
