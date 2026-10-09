@@ -134,7 +134,8 @@ describe('libro diario y reportes', () => {
     expect(tb.status).toBe(200);
     expect(tb.body.summary.balanced).toBe(true);
     const bank = tb.body.rows.find((r: { displayCode: string }) => r.displayCode === '109.9001');
-    expect(bank).toMatchObject({ opening: '25000.0000', debit: '8000.0000', closing: '33000.0000' });
+    // Aporte inicial (25.000) y aportes de los socios demo (25.000, 01/04); en mayo, venta (8.000) y préstamo recibido (20.000).
+    expect(bank).toMatchObject({ opening: '50000.0000', debit: '28000.0000', closing: '78000.0000' });
 
     const xlsx = await request(app.getHttpServer())
       .get('/api/v1/reports/trial-balance.xlsx?year=2026&month=5').set('Cookie', cookie)

@@ -5,14 +5,14 @@ ERP financiero-operativo para Grupo Kaluch. Sustituye el libro Excel
 basada en un libro diario de partida doble, multi-empresa, multi-moneda y
 multi-segmento.
 
-**Estado:** Fase 4 completada (09/10/2026): facturas de exportación con su cierre, contenedores,
-inventario con kardex, ventas de distribución con costo por lote, comisiones, ONAT, inversionistas y
-utilidad por contenedor; migración de ventas, costos y todos los gastos e ingresos de operación del Excel
-(0 diferencias sin explicar de abril a octubre). Antes: fase 3 (contrapartes, CxC/CxP, nómina) y fase 2
-(tesorería, usuarios, 2FA, despliegue).
+**Estado:** Fase 5 completada (09/10/2026): préstamos con devengo de intereses y corto/largo plazo,
+impuestos ONAT y Hacienda (devengo, pagos y cierres), capital por socio, cierre de mes y de ejercicio, y la
+migración de todo el BC del Excel: **todas las cuentas cuadran o tienen su diferencia explicada** de abril a
+octubre. Antes: fase 4 (exportación, distribución, inventario), fase 3 (contrapartes, nómina) y fase 2
+(tesorería, despliegue).
 Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) · [fase 3](docs/fases/fase-3.md) ·
-[fase 4](docs/fases/fase-4.md) · [despliegue](docs/despliegue.md). Siguiente: fase 5 (financiamientos,
-fiscal, capital y cierres).
+[fase 4](docs/fases/fase-4.md) · [fase 5](docs/fases/fase-5.md) · [despliegue](docs/despliegue.md). Siguiente:
+fase 6 (estados financieros y dashboard).
 
 ## Puesta en marcha (desarrollo)
 
@@ -64,4 +64,5 @@ Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (
 | [Fase 2](docs/fases/fase-2.md) | Tesorería, migración de caja y bancos, conciliación abril–octubre |
 | [Fase 3](docs/fases/fase-3.md) | Contrapartes, CxC/CxP, nómina, migración de deudas guiada por las fórmulas del BC |
 | [Fase 4](docs/fases/fase-4.md) | Exportación, contenedores, inventario, ventas de distribución, inversionistas, gastos de operación y totales de control |
+| [Fase 5](docs/fases/fase-5.md) | Préstamos, impuestos, capital por socio, cierres de mes y de ejercicio; conciliación de todo el BC |
 | [Despliegue](docs/despliegue.md) | Instalación en el VPS, actualización, carga de datos y copias de seguridad |

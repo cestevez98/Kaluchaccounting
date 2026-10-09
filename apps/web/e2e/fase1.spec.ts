@@ -79,7 +79,8 @@ test('balance de comprobación con formato es-ES y exportación a Excel', async 
   await page.getByLabel('Mes').selectOption({ label: 'Mayo' });
   await page.getByLabel('Año').fill('2026');
   const row = page.getByRole('row', { name: /109\.9001/ });
-  await expect(row).toContainText('33.000,00');
+  // Aportes de abril (50.000) más la venta y el préstamo de mayo (28.000).
+  await expect(row).toContainText('78.000,00');
   await expect(page.getByText(/^Cuadra/)).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Exportar a Excel' }).click();

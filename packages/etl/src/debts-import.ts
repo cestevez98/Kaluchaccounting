@@ -12,9 +12,9 @@
  * ya están en tesorería (bandeja de revisión, categorías Deuda*) se pasan también al puente, con su
  * contraparte, para no contarlos dos veces.
  */
-import { money, roundAmount } from '@kaluch/shared';
+import { endOfMonth, money, roundAmount } from '@kaluch/shared';
 import {
-  closeFxTransits, createOpenItem, ensureSystemAccounts, nextNumber, postEntry, postPartyDocument, reclassifyBySign, reclassifyMovement,
+  closeFxTransits, createLoan, createOpenItem, ensureSystemAccounts, nextNumber, postEntry, postPartyDocument, reclassifyBySign, reclassifyMovement,
   resolveMapping, revalueMonth, settleOpenItem, upsertParty, upsertPartyAccount, withTx,
   PARTY_BRIDGE_MAPPING, type PartyDocKind, type PartyRole, type PrismaClient,
 } from '@kaluch/db';
@@ -49,6 +49,16 @@ export interface BcScope {
 }
 export const DEBTS_SCOPE: BcScope = { name: 'Deudas', codes: DEBT_CODES, debts: true };
 export const SALES_SCOPE: BcScope = { name: 'Ventas', codes: SALES_CODES, debts: false };
+
+/** Fase 5: financiamientos dados (138), impuestos devengados por pagar (480) y capital (600, 630). */
+export const FISCAL_CODES = ['138', '480', '600', '630'];
+export const FISCAL_SCOPE: BcScope = { name: 'Fiscal y capital', codes: FISCAL_CODES, debts: false };
+
+/**
+ * Fórmula que es solo una celda de otra hoja (600 Capital = Capital!B26): el Excel calcula el saldo fuera de
+ * las tablas (cuadre inicial más resultados capitalizados cada mes). Se migra su valor del BC mes a mes.
+ */
+const OTHER_SHEET_CELL = /^\+?(?:'[^']+'|[A-Za-z_À-ÿ][A-Za-z0-9_À-ÿ.]*)!\$?[A-Z]{1,3}\$?\d+$/;
 
 /** Cuentas que se llevan por contraparte (cuenta corriente); el resto se contabiliza sin ella. */
 const PARTY_CODE = /^(135|136|137|138|139|146|405|406|407|408|409|410|411|412|413|430|455|699)(\.|$)/;
@@ -116,6 +126,7 @@ function roleFor(code: string): PartyRole {
   if (code.startsWith('411')) return 'LENDER';
   if (code.startsWith('412')) return 'INVESTOR';
   if (/^(406|407|408|409|413|146)/.test(code)) return 'SUPPLIER';
+  if (code.startsWith('138')) return 'OTHER';
   return 'OTHER';
 }
 
@@ -254,6 +265,56 @@ export function importSales(prisma: PrismaClient, w: Workbook, file: string, opt
   return importDebts(prisma, w, file, { ...opts, scope: SALES_SCOPE });
 }
 
+/** Fase 5: financiamientos, impuestos devengados y capital (tras la de ventas), y el registro de préstamos. */
+export async function importFiscal(prisma: PrismaClient, w: Workbook, file: string, opts: DebtImportOptions) {
+  const r = await importDebts(prisma, w, file, { ...opts, scope: FISCAL_SCOPE });
+  const loans = await registerMigratedLoans(prisma, w, opts);
+  return { ...r, stats: { ...r.stats, loans } };
+}
+
+/**
+ * Registro de préstamos desde la tabla Financiamientos (una fila por operación): lo recibido ("A cobrar USD"), lo que
+ * se devuelve ("A pagar USD") y su diferencia como interés. Los importes ya están contabilizados por las aportaciones
+ * al BC (138/411 y gastos financieros): el préstamo queda marcado como migrado y no se vuelve a devengar.
+ */
+async function registerMigratedLoans(prisma: PrismaClient, w: Workbook, opts: DebtImportOptions) {
+  const td = readTable(tableIndex(w.wb), 'Financiamientos');
+  if (!td) return { registered: 0, closed: 0 };
+  const company = await prisma.company.findUniqueOrThrow({ where: { code: opts.debtCompany } });
+  const account = await prisma.account.findFirst({ where: { code: '411', postable: true }, orderBy: { sortOrder: 'asc' } });
+  if (!account) return { registered: 0, closed: 0 };
+  let registered = 0;
+  let closed = 0;
+  for (const row of td.rows) {
+    const v = row.values;
+    const entity = asString(v.Entidad);
+    const reference = asString(v.Referencia);
+    const start = asIsoDate(v['Fecha inicial']);
+    const received = money(excelNumber(v['A cobrar USD']) ?? 0);
+    if (!entity || !reference || !start || received.lte(0) || start > opts.maxDate) continue;
+    const toRepay = money(excelNumber(v['A pagar USD']) ?? 0);
+    const interest = toRepay.gt(received) ? toRepay.minus(received) : money(0);
+    const name = cleanName(entity);
+    const party = await upsertParty(prisma, { code: slug(name) || 'SIN_IDENTIFICAR', name, roles: ['LENDER'] });
+    const pa = await upsertPartyAccount(prisma, { companyId: company.id, partyId: party.id, currency: 'USD', accountId: account.id, name: `${name} · 411` });
+    if (await prisma.loan.findUnique({ where: { companyId_reference: { companyId: company.id, reference } } })) continue;
+    const end = asIsoDate(v['Fecha final']);
+    const pending = money(excelNumber(v['Pendiente a pagar2']) ?? 0).plus(money(excelNumber(v['Pendiente a cobrar2']) ?? 0));
+    const loan = await withTx(prisma, {}, (tx) => createLoan(tx, {
+      partyAccountId: pa.id, direction: 'RECEIVED', reference, description: `Financiamiento ${reference} (migrado del Excel)`,
+      startDate: start, endDate: end && end >= start ? end : null, principalUsd: roundAmount(received).toFixed(4),
+      ratePct: roundAmount(interest.div(received).times(100)).toFixed(4), migrated: true,
+    }));
+    registered++;
+    // Sin nada pendiente en el Excel: devuelto.
+    if (roundAmount(pending).isZero() && money(excelNumber(v['Pagado USD']) ?? 0).gte(roundAmount(toRepay))) {
+      await prisma.loan.update({ where: { id: loan.id }, data: { status: 'CLOSED' } });
+      closed++;
+    }
+  }
+  return { registered, closed };
+}
+
 export async function importDebts(prisma: PrismaClient, w: Workbook, file: string, opts: DebtImportOptions) {
   const log = opts.log ?? (() => {});
   const scope = opts.scope ?? DEBTS_SCOPE;
@@ -282,11 +343,15 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   const trayRules: { accountId: string; code: string; terms: LinearTerm[] }[] = [];
   const byRow = new Map(accounts.map((a) => [a.sortOrder, a]));
   const forms: { acc: (typeof accounts)[number]; form: LinearForm }[] = [];
+  /** Cuentas cuyo saldo calcula el Excel fuera de las tablas: se migra el valor del BC. */
+  const bcValueAccounts: (typeof accounts)[number][] = [];
   for (let r = 3; r <= bc.rowCount; r++) {
     const acc = byRow.get(r);
     if (!acc) continue;
     const f = readCell(bc, r, col).formula;
     if (!f) continue;
+    // En abril el capital es el cuadre del BC (suma de otras filas) y desde mayo una celda de la hoja Capital.
+    if ([f, readCell(bc, r, col + 1).formula ?? ''].some((x) => OTHER_SHEET_CELL.test(x.trim()))) { bcValueAccounts.push(acc); continue; }
     try {
       const form = normalize(linearize(f, (row) => readCell(bc, row, col).formula ?? null, 0, (c, row) => readCell(bc, row, colNumber(c)).value));
       const isTreasury = (t: LinearTerm) => (TREASURY_SHEETS as readonly string[]).includes(t.sheet);
@@ -590,6 +655,12 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
     if ((i / BATCH) % 10 === 0) log(`  documentos ${Math.min(i + BATCH, groups.length)}/${groups.length}`);
   }
 
+  // 5b. Saldos calculados por el Excel (capital): la variación de cada mes contra el puente.
+  const bcValueDocs = bcValueAccounts.length ? await postBcValues(prisma, bcValueAccounts, {
+    company: companies.get(opts.debtCompany)!, bridge, batchFile: basename(file), log,
+  }) : 0;
+  counters.documents += bcValueDocs;
+
   // 6. Filas sin aportación posterior a la apertura en tablas con importes fuera de alcance: nada que hacer.
   // 7. Partidas abiertas: facturas de proveedores, nómina y CxC/CxP generales con sus pagos.
   const openItems = !scope.debts ? {} : await buildOpenItems(prisma, { contributions, partyAccountOf, docOfRow, openingDocs, openingDate: opts.openingDate, maxDate: opts.maxDate, issues });
@@ -639,6 +710,50 @@ export async function importDebts(prisma: PrismaClient, w: Workbook, file: strin
   };
   await prisma.importBatch.update({ where: { id: batch.id }, data: { stats: { ...stats, issues: issues.slice(0, 500) } } });
   return { stats, issues, monthly };
+}
+
+/**
+ * Migra mes a mes el valor del BC de cuentas que el Excel calcula fuera de las tablas (600 Capital: cuadre de
+ * abril y después capital anterior + resultado consolidado + ingresos por inversión). Un asiento a fin de mes por
+ * la variación, contra la cuenta puente.
+ */
+async function postBcValues(
+  prisma: PrismaClient,
+  accounts: { id: string; displayCode: string; classification: string; sortOrder: number; name: string }[],
+  p: { company: { id: string; code: string }; bridge: (companyId: string) => Promise<string>; batchFile: string; log: (m: string) => void },
+) {
+  const ref = await prisma.importBatch.findFirst({ where: { tableName: 'BC:referencia' }, orderBy: { createdAt: 'desc' } });
+  if (!ref) throw new Error('Falta la referencia del BC: ejecuta antes "all" o "bc-ref"');
+  let docs = 0;
+  for (const acc of accounts) {
+    const values = await prisma.bcReference.findMany({ where: { importId: ref.id, excelRow: acc.sortOrder }, orderBy: [{ year: 'asc' }, { month: 'asc' }] });
+    let prev = money(0);
+    for (const v of values) {
+      const value = money(v.valueUsd);
+      // Signo del Excel → importe contable (+ Debe): activo tal cual; pasivo, capital y resultados al revés.
+      const delta = roundAmount(value.minus(prev).times(acc.classification === 'AC' ? 1 : -1));
+      prev = value;
+      if (delta.isZero()) continue;
+      const date = endOfMonth(v.year, v.month);
+      const memo = `${acc.displayCode} ${acc.name}: saldo calculado por el Excel a ${date.split('-').reverse().join('/')} (${value.toFixed(2)})`;
+      await withTx(prisma, {}, async (tx) => {
+        const seq = await nextNumber(tx, p.company.id, v.year, 'MIG');
+        const doc = await tx.document.create({
+          data: { companyId: p.company.id, docType: 'MIGRATION', number: `${p.company.code}-MIG-${v.year}-${String(seq).padStart(6, '0')}`, docDate: new Date(`${date}T00:00:00Z`), memo },
+        });
+        await postEntry(tx, {
+          companyId: p.company.id, entryDate: date, kind: 'AUTO', memo, documentId: doc.id,
+          lines: [
+            { accountId: acc.id, currency: 'USD', amount: delta.toFixed(4), memo },
+            { accountId: await p.bridge(p.company.id), currency: 'USD', amount: delta.neg().toFixed(4), memo },
+          ],
+        });
+      });
+      docs++;
+    }
+    p.log(`  ${acc.displayCode}: ${values.length} meses desde el BC del Excel`);
+  }
+  return docs;
 }
 
 function partyColumn(table: string, term: LinearTerm): string | null {

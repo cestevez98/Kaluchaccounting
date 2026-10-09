@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { upsertParty, upsertPartyAccount } from '../parties';
 
 /** Contrapartes de DEMOSTRACIÓN (ficticias). */
-const PARTIES: { code: string; name: string; kind: 'PERSON' | 'COMPANY'; roles: ('CUSTOMER' | 'SUPPLIER' | 'EMPLOYEE' | 'PARTNER' | 'COURIER' | 'SELLER' | 'INVESTOR')[]; company: string; currency: string; account: string; opposite?: string }[] = [
+const PARTIES: { code: string; name: string; kind: 'PERSON' | 'COMPANY'; roles: ('CUSTOMER' | 'SUPPLIER' | 'EMPLOYEE' | 'PARTNER' | 'COURIER' | 'SELLER' | 'INVESTOR' | 'LENDER' | 'OTHER')[]; company: string; currency: string; account: string; opposite?: string }[] = [
   { code: 'CONTRAPARTE_DEMO', name: 'Contraparte demo', kind: 'PERSON', roles: ['COURIER'], company: 'DM', currency: 'USD', account: '135.0001', opposite: '405.0001' },
   { code: 'CONTRAPARTE_EUR', name: 'Contraparte demo EUR', kind: 'PERSON', roles: ['CUSTOMER'], company: 'DM', currency: 'EUR', account: '135.0002', opposite: '405.0002' },
   { code: 'PROVEEDOR_DEMO', name: 'Proveedor demo S.L.', kind: 'COMPANY', roles: ['SUPPLIER'], company: 'KEI', currency: 'USD', account: '406' },
@@ -13,6 +13,9 @@ const PARTIES: { code: string; name: string; kind: 'PERSON' | 'COMPANY'; roles: 
   { code: 'VENDEDOR_DEMO', name: 'Vendedor demo', kind: 'PERSON', roles: ['SELLER'], company: 'GR', currency: 'USD', account: '410.9990' },
   { code: 'VENDEDOR_DEMO', name: 'Vendedor demo', kind: 'PERSON', roles: ['SELLER'], company: 'KEI', currency: 'USD', account: '410.8880' },
   { code: 'INVERSIONISTA_DEMO', name: 'Inversionista demo', kind: 'PERSON', roles: ['INVESTOR'], company: 'GR', currency: 'USD', account: '412' },
+  // Fase 5: financiamientos y socios.
+  { code: 'PRESTAMISTA_DEMO', name: 'Prestamista demo', kind: 'PERSON', roles: ['LENDER'], company: 'KEI', currency: 'USD', account: '411' },
+  { code: 'DEUDOR_PRESTAMO_DEMO', name: 'Deudor de préstamo demo', kind: 'PERSON', roles: ['OTHER'], company: 'KEI', currency: 'USD', account: '138' },
   { code: 'PROVEEDOR_DISTRIBUCION_DEMO', name: 'Proveedor distribución demo', kind: 'COMPANY', roles: ['SUPPLIER'], company: 'GR', currency: 'USD', account: '406' },
 ];
 

@@ -7,12 +7,12 @@ import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api, ApiError, useApi } from '@/lib/api';
 
 type Mode = 'full' | 'sales' | 'rates';
-const MODE_LABEL: Record<Mode, string> = { full: 'migración completa', sales: 'exportación y distribución', rates: 'tasas' };
+const MODE_LABEL: Record<Mode, string> = { full: 'migración completa', sales: 'fases nuevas', rates: 'tasas' };
 
 interface Step { key: string; label: string; status: 'pending' | 'running' | 'done' | 'error' | 'skipped'; startedAt: string | null; finishedAt: string | null }
 interface ImportState {
   job: { status: 'running' | 'done' | 'error'; mode: Mode; fileName: string; startedBy: string; startedAt: string; finishedAt: string | null; steps: Step[]; log: string[]; error: string | null } | null;
-  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; phases: { debts: boolean; sales: boolean }; lastImport: { at: string; file: string; table: string } | null };
+  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; phases: { debts: boolean; sales: boolean; fiscal: boolean }; lastImport: { at: string; file: string; table: string } | null };
 }
 
 const STEP_TONE: Record<Step['status'], { label: string; tone: 'gray' | 'green' | 'amber' | 'red' | 'blue' }> = {
@@ -34,7 +34,7 @@ export default function ImportPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const running = data?.job?.status === 'running';
   const migrated = (data?.data.treasuryMovements ?? 0) > 0 || (data?.data.partyDocuments ?? 0) > 0;
-  const salesPending = !!data?.data.phases.debts && !data.data.phases.sales;
+  const salesPending = !!data?.data.phases.debts && (!data.data.phases.sales || !data.data.phases.fiscal);
   // Por defecto: lo que falta por migrar.
   const current: Mode = mode ?? (!migrated ? 'full' : salesPending ? 'sales' : 'rates');
   const needsConfirm = current !== 'rates';
@@ -93,7 +93,7 @@ export default function ImportPage() {
                 <label className="label" htmlFor="mode">Qué importar</label>
                 <select id="mode" className="input" value={current} onChange={(e) => setMode(e.target.value as Mode)}>
                   <option value="full">Migración completa (una sola vez, sobre una base vacía)</option>
-                  <option value="sales">Añadir exportación y distribución (fase 4) a la base ya migrada</option>
+                  <option value="sales">Añadir lo que falta por migrar (exportación y distribución, financiamientos, impuestos y capital)</option>
                   <option value="rates">Solo actualizar las tasas de cambio</option>
                 </select>
               </div>
@@ -101,7 +101,7 @@ export default function ImportPage() {
                 <Alert kind="warning">Esta base ya tiene datos migrados: la migración completa no se puede repetir. Puedes actualizar solo las tasas.</Alert>
               )}
               {current === 'sales' && !salesPending && (
-                <Alert kind="warning">{data.data.phases.sales ? 'La exportación y distribución ya están migradas en esta base.' : 'Primero hay que hacer la migración completa (caja, bancos y deudas).'}</Alert>
+                <Alert kind="warning">{data.data.phases.debts ? 'Esta base ya tiene migradas todas las fases.' : 'Primero hay que hacer la migración completa (caja, bancos y deudas).'}</Alert>
               )}
               <div>
                 <label className="label" htmlFor="file">Archivo Excel (.xlsx)</label>
@@ -113,7 +113,7 @@ export default function ImportPage() {
                   <span>
                     {current === 'full'
                       ? 'Entiendo que la migración tarda unos 15–20 minutos, que crea los saldos de apertura al 31/03/2026 y los movimientos desde abril, y que no se puede deshacer desde la aplicación.'
-                      : 'Entiendo que la migración de exportación y distribución tarda unos 5 minutos, que actualiza el plan de cuentas y los valores del BC con este archivo y que no se puede deshacer desde la aplicación. Debe ser el mismo Excel (o una versión posterior) del que se migraron las fases anteriores.'}
+                      : 'Entiendo que migrar lo que falta tarda unos 5 minutos, que actualiza el plan de cuentas y los valores del BC con este archivo y que no se puede deshacer desde la aplicación. Debe ser el mismo Excel (o una versión posterior) del que se migraron las fases anteriores.'}
                   </span>
                 </label>
               )}

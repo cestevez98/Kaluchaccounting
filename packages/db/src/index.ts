@@ -16,3 +16,4 @@ export type { CategoryKind, MovementKind, TreasuryKind, PartyDocKind, PartyRole,
 export * from './bank';
 export * from './parties';
 export * from './sales';
+export * from './finance';

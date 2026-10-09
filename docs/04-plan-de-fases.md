@@ -84,7 +84,7 @@ Resumen: [fases/fase-3.md](fases/fase-3.md).
   y 900–901, 1900, 1814–1817, 2900, 2814–2816 concilian, y los totales de
   control ING/GAS/UT 777/888/999 coinciden.
 
-## Fase 5 · Financiamientos, fiscal, capital y cierres
+## Fase 5 · Financiamientos, fiscal, capital y cierres ✅
 - Préstamos dados y recibidos, calendario, devengo de intereses (842/921),
   cobros y pagos, corto/largo plazo (138/411/520).
 - Fiscal: obligaciones por agencia, devengo vs pago, cierre trimestral ONAT y

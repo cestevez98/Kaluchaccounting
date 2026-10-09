@@ -9,6 +9,7 @@ import { ensureSystemAccounts } from '../system-accounts';
 import { seedDemoTreasury } from './treasury-demo';
 import { seedDemoParties } from './parties-demo';
 import { seedDemoProducts, seedDemoSales } from './sales-demo';
+import { seedDemoFinance, seedDemoPartners } from './finance-demo';
 import { upsertAccounts } from './accounts';
 import { DEMO_ACCOUNTS } from './accounts-demo';
 import { seedCatalogs, seedPeriods } from './catalogs';
@@ -41,6 +42,7 @@ export async function seedDemo(prisma: PrismaClient, opts: { entries?: boolean }
   await seedDemoTreasury(prisma);
   await seedDemoParties(prisma);
   await seedDemoProducts(prisma);
+  await seedDemoPartners(prisma);
 
   // Tasas 01/01/2026 – 31/10/2026.
   const series: [string, string, string, number, number][] = [
@@ -73,7 +75,8 @@ export async function seedDemo(prisma: PrismaClient, opts: { entries?: boolean }
     email: 'lectura@kaluch.local', name: 'Lectura demo (solo KEI)', password: DEMO_PASSWORD, role: 'Solo lectura', companyCodes: ['KEI'],
   });
 
-  if (opts.entries === false || (await prisma.journalEntry.count()) > 0) return;
+  // Los asientos de demostración se cargan una vez (aunque otros procesos ya hayan contabilizado).
+  if (opts.entries === false || (await prisma.journalEntry.findFirst({ where: { memo: 'Aporte inicial de capital (demo)' } }))) return;
 
   const acc = async (fullCode: string) => (await prisma.account.findUniqueOrThrow({ where: { fullCode } })).id;
   const company = async (code: string) => (await prisma.company.findUniqueOrThrow({ where: { code } })).id;
@@ -119,6 +122,7 @@ export async function seedDemo(prisma: PrismaClient, opts: { entries?: boolean }
     });
   });
   await seedDemoSales(prisma, admin.id);
+  await seedDemoFinance(prisma, admin.id);
 }
 
 if (require.main === module) {

@@ -38,6 +38,8 @@ model Company {
   partyAccounts    PartyAccount[]
   exportInvoices   ExportInvoice[]
   containers       Container[]
+  loans            Loan[]
+  yearCloses       YearClose[]
 
   @@map("company")
 }
@@ -465,6 +467,10 @@ model Document {
   exportClose      ExportInvoice?      @relation("ExportInvoiceClose")
   salesInvoice     SalesInvoice?
   inventoryMoves   InventoryMovement[]
+  loan             Loan?               @relation("LoanDisbursement")
+  loanAccrual      LoanAccrual?        @relation("LoanAccrual")
+  taxDocument      TaxDocument?
+  capitalMovement  CapitalMovement?
 
   @@unique([companyId, number])
   @@index([companyId, docDate])
@@ -751,8 +757,9 @@ model Party {
   active    Boolean     @default(true)
   createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
-  accounts  PartyAccount[]
-  openItems OpenItem[]
+  accounts         PartyAccount[]
+  openItems        OpenItem[]
+  capitalMovements CapitalMovement[]
 
   @@map("party")
 }
@@ -786,6 +793,7 @@ model PartyAccount {
   containerInvestors ContainerInvestor[]
   salesInvoices      SalesInvoice[]
   salesCommissions   SalesLine[]         @relation("SalesLineSeller")
+  loans              Loan[]
 
   @@unique([companyId, partyId, currency, accountId])
   @@index([partyId])
@@ -1128,4 +1136,133 @@ model SalesLine {
   @@index([containerId])
   @@index([sellerPartyAccountId])
   @@map("sales_line")
+}
+
+// ───────────────────────── Fase 5: financiamientos, fiscal, capital y cierres ─────────────────────────
+
+enum LoanDirection {
+  /// Préstamo que damos (por cobrar, 138).
+  GIVEN
+  /// Préstamo que recibimos (por pagar, 411; la parte a más de un año, 520).
+  RECEIVED
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+}
+
+/// Financiamiento con interés fijo sobre el principal (como el "Importe + %" del Excel), devengado por días.
+model Loan {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  companyId      String        @map("company_id") @db.Uuid
+  company        Company       @relation(fields: [companyId], references: [id])
+  partyAccountId String        @map("party_account_id") @db.Uuid
+  partyAccount   PartyAccount  @relation(fields: [partyAccountId], references: [id])
+  direction      LoanDirection
+  reference      String
+  description    String
+  startDate      DateTime      @map("start_date") @db.Date
+  /// Vencimiento; sin él, el interés se devenga entero el mes de inicio.
+  endDate        DateTime?     @map("end_date") @db.Date
+  principalUsd   Decimal       @map("principal_usd") @db.Decimal(18, 4)
+  /// Interés total sobre el principal, en % (no anual): 9 = 9 %.
+  ratePct        Decimal       @map("rate_pct") @db.Decimal(9, 4)
+  interestUsd    Decimal       @map("interest_usd") @db.Decimal(18, 4)
+  /// Parte reclasificada a largo plazo (520) a la fecha de la última reclasificación.
+  longTermUsd    Decimal       @default(0) @map("long_term_usd") @db.Decimal(18, 4)
+  status         LoanStatus    @default(ACTIVE)
+  /// Registrado desde el Excel: el principal y el interés ya están contabilizados (no se devenga).
+  migrated       Boolean       @default(false)
+  documentId     String?       @unique @map("document_id") @db.Uuid
+  document       Document?     @relation("LoanDisbursement", fields: [documentId], references: [id])
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  createdBy      String?       @map("created_by") @db.Uuid
+
+  accruals LoanAccrual[]
+
+  @@unique([companyId, reference])
+  @@map("loan")
+}
+
+/// Interés devengado de un préstamo en un mes (uno por préstamo y mes).
+model LoanAccrual {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  loanId     String   @map("loan_id") @db.Uuid
+  loan       Loan     @relation(fields: [loanId], references: [id])
+  year       Int
+  month      Int
+  amountUsd  Decimal  @map("amount_usd") @db.Decimal(18, 4)
+  documentId String   @unique @map("document_id") @db.Uuid
+  document   Document @relation("LoanAccrual", fields: [documentId], references: [id])
+
+  @@unique([loanId, year, month])
+  @@map("loan_accrual")
+}
+
+enum TaxAgency {
+  /// Cuba (Distribución, 999): cierre trimestral.
+  ONAT
+  /// España (Exportación, 888): cierre anual.
+  HACIENDA
+}
+
+enum TaxDocKind {
+  ACCRUAL
+  ADJUSTMENT
+}
+
+/// Devengo de impuestos (gasto contra 480) y cierre del periodo fiscal (diferencia a 848/920).
+model TaxDocument {
+  id          String     @id @db.Uuid
+  document    Document   @relation(fields: [id], references: [id])
+  companyId   String     @map("company_id") @db.Uuid
+  agency      TaxAgency
+  kind        TaxDocKind
+  periodFrom  DateTime   @map("period_from") @db.Date
+  periodTo    DateTime   @map("period_to") @db.Date
+  amountUsd   Decimal    @map("amount_usd") @db.Decimal(18, 4)
+  /// Solo en los cierres: lo declarado y lo devengado en el periodo.
+  declaredUsd Decimal?   @map("declared_usd") @db.Decimal(18, 4)
+  accruedUsd  Decimal?   @map("accrued_usd") @db.Decimal(18, 4)
+
+  @@index([companyId, agency, periodFrom])
+  @@map("tax_document")
+}
+
+enum CapitalMoveKind {
+  CONTRIBUTION
+  WITHDRAWAL
+  DISTRIBUTION
+}
+
+/// Aporte, retiro de capital o reparto de utilidades de un socio.
+model CapitalMovement {
+  id               String          @id @db.Uuid
+  document         Document        @relation(fields: [id], references: [id])
+  companyId        String          @map("company_id") @db.Uuid
+  partyId          String          @map("party_id") @db.Uuid
+  party            Party           @relation(fields: [partyId], references: [id])
+  kind             CapitalMoveKind
+  amountUsd        Decimal         @map("amount_usd") @db.Decimal(18, 4)
+  counterAccountId String          @map("counter_account_id") @db.Uuid
+  description      String
+
+  @@index([partyId])
+  @@map("capital_movement")
+}
+
+/// Cierre anual: resultados del año a Utilidades retenidas (periodo 13). Repetible: anula el anterior.
+model YearClose {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  company   Company  @relation(fields: [companyId], references: [id])
+  year      Int
+  entryIds  String[] @map("entry_ids") @db.Uuid
+  resultUsd Decimal  @map("result_usd") @db.Decimal(18, 4)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdBy String?  @map("created_by") @db.Uuid
+
+  @@unique([companyId, year])
+  @@map("year_close")
 }

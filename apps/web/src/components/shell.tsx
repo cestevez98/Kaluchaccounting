@@ -41,7 +41,9 @@ export const MODULES: Module[] = [
         { href: '/periodos', label: 'Periodos', perm: 'period:read' },
         { href: '/tesoreria/revaluacion', label: 'Revaluación (tenencia)', perm: 'ledger:read' },
         { href: '/terceros/reclasificacion', label: 'Reclasificación por signo', perm: 'parties:read' },
+        { href: '/cierre', label: 'Cierre de mes y de ejercicio', perm: 'ledger:read' },
       ] },
+      { label: 'Patrimonio', items: [{ href: '/capital', label: 'Capital por socio', perm: 'ledger:read' }] },
       { label: 'Maestros', items: [{ href: '/plan-de-cuentas', label: 'Plan de cuentas', perm: 'accounts:read' }] },
     ],
   },
@@ -136,8 +138,23 @@ export const MODULES: Module[] = [
       },
     ],
   },
-  { key: 'financiamientos', icon: '💰', label: 'Financiamientos', href: '#', phase: 5 },
-  { key: 'impuestos', icon: '🧾', label: 'Impuestos', href: '#', phase: 5 },
+  {
+    key: 'financiamientos', icon: '💰', label: 'Financiamientos', href: '/financiamientos', perm: 'ledger:read',
+    groups: [
+      {
+        label: 'Préstamos',
+        items: [
+          { href: '/financiamientos', label: 'Préstamos dados y recibidos', perm: 'ledger:read' },
+          { href: '/financiamientos/nuevo', label: 'Nuevo préstamo', perm: 'finance:manage' },
+          { href: '/terceros?role=LENDER', label: 'Prestamistas', perm: 'parties:read' },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'impuestos', icon: '🧾', label: 'Impuestos', href: '/impuestos', perm: 'ledger:read',
+    groups: [{ label: 'Fiscal', items: [{ href: '/impuestos', label: 'ONAT y Hacienda', perm: 'ledger:read' }] }],
+  },
   {
     key: 'rrhh', icon: '🧑‍💼', label: 'RRHH', href: '/rrhh', perm: 'parties:read',
     groups: [{ label: 'Nómina', items: [

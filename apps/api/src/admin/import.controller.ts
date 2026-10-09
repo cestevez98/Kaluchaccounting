@@ -38,13 +38,16 @@ const STEPS: Record<ImportJob['mode'], { key: string; label: string; args: (file
     { key: 'treasury', label: 'Caja y bancos (apertura y movimientos)', args: (f) => ['treasury', f, '--revalue-until='] },
     { key: 'debts', label: 'Deudas, proveedores y nómina; revaluaciones y cierres abril–octubre', args: (f) => ['debts', f] },
     { key: 'sales', label: 'Exportación, distribución, inventario, ventas, costos y gastos', args: (f) => ['sales', f] },
+    { key: 'fiscal', label: 'Financiamientos, impuestos devengados y capital', args: (f) => ['fiscal', f] },
     { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
     { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
   ],
-  // Fase 4 sobre una base que ya tiene migradas las fases 1–3: actualiza el plan de cuentas y los valores del BC.
+  // Fases nuevas sobre una base ya migrada: actualiza el plan de cuentas y los valores del BC y migra lo que falte
+  // (los pasos de las fases ya migradas se quitan al lanzar).
   sales: [
     { key: 'all', label: 'Plan de cuentas, tasas y valores del BC (actualización)', args: (f) => ['all', f] },
     { key: 'sales', label: 'Exportación, distribución, inventario, ventas, costos y gastos', args: (f) => ['sales', f] },
+    { key: 'fiscal', label: 'Financiamientos, impuestos devengados y capital', args: (f) => ['fiscal', f] },
     { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
     { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
   ],
@@ -118,15 +121,16 @@ export class ImportController {
   @Get()
   @RequirePermission('admin:settings')
   async state() {
-    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch, debts, sales] = await Promise.all([
+    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch, debts, sales, fiscal] = await Promise.all([
       this.prisma.account.count(), this.prisma.exchangeRate.count(), this.prisma.treasuryMovement.count(),
       this.prisma.partyDocument.count(), this.prisma.importBatch.findFirst({ orderBy: { createdAt: 'desc' } }),
       this.prisma.importBatch.count({ where: { tableName: 'Deudas' } }), this.prisma.importBatch.count({ where: { tableName: 'Ventas' } }),
+      this.prisma.importBatch.count({ where: { tableName: 'Fiscal y capital' } }),
     ]);
     return {
       // Sin los argumentos internos (ruta del archivo temporal).
       job: job ? { ...job, steps: job.steps.map(({ args: _args, ...s }) => s) } : null,
-      data: { accounts, rates, treasuryMovements, partyDocuments, phases: { debts: debts > 0, sales: sales > 0 }, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
+      data: { accounts, rates, treasuryMovements, partyDocuments, phases: { debts: debts > 0, sales: sales > 0, fiscal: fiscal > 0 }, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
     };
   }
 
@@ -154,12 +158,12 @@ export class ImportController {
         });
       }
     }
+    const skip = new Set<string>();
     if (b.mode === 'sales') {
-      const [debts, sales] = await Promise.all([
-        this.prisma.importBatch.findFirst({ where: { tableName: 'Deudas' } }), this.prisma.importBatch.findFirst({ where: { tableName: 'Ventas' } }),
-      ]);
+      const [debts, sales, fiscal] = await Promise.all(['Deudas', 'Ventas', 'Fiscal y capital'].map((tableName) => this.prisma.importBatch.findFirst({ where: { tableName } })));
       if (!debts) throw new ConflictException({ code: 'PHASE_MISSING', message: 'Primero hay que migrar tesorería y deudas (migración completa)' });
-      if (sales) throw new ConflictException({ code: 'ALREADY_IMPORTED', message: 'La migración de exportación y distribución ya se hizo en esta base' });
+      if (sales && fiscal) throw new ConflictException({ code: 'ALREADY_IMPORTED', message: 'Esta base ya tiene migradas todas las fases' });
+      if (sales) skip.add('sales');
     }
     // El nombre original queda en el historial de importaciones (sin caracteres raros).
     const safe = file.originalname.normalize('NFD').replace(/[^\w.-]+/g, '_').slice(-80);
@@ -168,7 +172,7 @@ export class ImportController {
     await chmod(path, 0o600);
     job = {
       status: 'running', mode: b.mode, fileName: file.originalname, startedBy: user.email, startedAt: new Date().toISOString(), finishedAt: null,
-      steps: STEPS[b.mode].map((s) => ({ key: s.key, label: s.label, args: s.args(path), status: 'pending', startedAt: null, finishedAt: null })),
+      steps: STEPS[b.mode].filter((s) => !skip.has(s.key)).map((s) => ({ key: s.key, label: s.label, args: s.args(path), status: 'pending', startedAt: null, finishedAt: null })),
       log: [], error: null,
     };
     void run(job, path);

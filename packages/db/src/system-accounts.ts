@@ -61,6 +61,20 @@ export const DEFAULT_MAPPINGS: Record<string, string[]> = {
   'distribution.stock.transit': ['181.9991'],
   'onat.expense': ['830.9990', '829.9990'],
   'onat.payable': ['480.9990'],
+  // Fase 5: financiamientos, impuestos, capital.
+  'loan.interest.expense': ['842.8880', '842'],
+  'loan.interest.income': ['921.8880', '921'],
+  'loan.longterm': ['520'],
+  'tax.onat.expense': ['830.9990'],
+  'tax.onat.payable': ['480.9990'],
+  'tax.onat.loss': ['848.9990'],
+  'tax.onat.gain': ['920.9990'],
+  'tax.hacienda.expense': ['830.8880'],
+  'tax.hacienda.payable': ['480.8880'],
+  'tax.hacienda.loss': ['848.8880'],
+  'tax.hacienda.gain': ['920.8880'],
+  'equity.capital': ['600', '600.0001'],
+  'equity.retained': ['630', '630.0001'],
 };
 
 /** Mapeos por segmento (más específicos que los generales). */

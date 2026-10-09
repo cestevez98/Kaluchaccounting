@@ -318,3 +318,61 @@ export const salesInvoiceInputSchema = z.object({
     sellerPartyAccountId: uuid.nullable().optional(),
   })).min(1).max(200),
 });
+
+// ───────────────────────── Fase 5: financiamientos, impuestos, capital y cierres ─────────────────────────
+
+export const loanInputSchema = z.object({
+  partyAccountId: uuid,
+  direction: z.enum(['GIVEN', 'RECEIVED']),
+  reference: z.string().trim().min(1).max(60),
+  description: z.string().trim().min(1).max(500),
+  startDate: isoDate,
+  endDate: isoDate.nullable().optional(),
+  principalUsd: positiveDecimal,
+  ratePct: nonNegativeDecimal.default('0'),
+  counterAccountId: uuid.nullable().optional(),
+});
+
+export const monthInputSchema = z.object({
+  companyId: uuid,
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+});
+
+export const loanTermInputSchema = z.object({ companyId: uuid, asOf: isoDate });
+
+export const TAX_AGENCIES = ['ONAT', 'HACIENDA'] as const;
+
+export const taxAccrualInputSchema = z.object({
+  companyId: uuid,
+  agency: z.enum(TAX_AGENCIES),
+  date: isoDate,
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  amountUsd: decimalString,
+  description: z.string().trim().min(1).max(500),
+});
+
+export const taxCloseInputSchema = z.object({
+  companyId: uuid,
+  agency: z.enum(TAX_AGENCIES),
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  date: isoDate,
+  declaredUsd: nonNegativeDecimal,
+});
+
+export const capitalMovementInputSchema = z.object({
+  companyId: uuid,
+  partyId: uuid,
+  kind: z.enum(['CONTRIBUTION', 'WITHDRAWAL', 'DISTRIBUTION']),
+  date: isoDate,
+  amountUsd: positiveDecimal,
+  counterAccountId: uuid,
+  description: z.string().trim().min(1).max(500),
+});
+
+export const yearCloseInputSchema = z.object({
+  companyId: uuid,
+  year: z.coerce.number().int().min(2020).max(2100),
+});

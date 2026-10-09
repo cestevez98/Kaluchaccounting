@@ -59,8 +59,8 @@ Subes "Balance de comprobación.xlsx" y la aplicación ejecuta toda la migració
 minutos: plan de cuentas, tasas, caja y bancos, deudas, proveedores y nómina, exportación y distribución,
 y conciliación. La pantalla muestra el avance y el registro, y el archivo se borra del servidor al terminar.
 La migración completa solo se puede hacer una vez, sobre una base vacía; después, la misma pantalla sirve
-para actualizar las tasas. En una base migrada antes de la fase 4, el modo *"Añadir exportación y
-distribución (fase 4)"* añade solo esa parte (unos 5 minutos).
+para actualizar las tasas. En una base migrada con una versión anterior, el modo *"Añadir lo que falta
+por migrar"* ejecuta solo las fases que falten (unos 5 minutos).
 
 **Por consola** (alternativa):
 
@@ -75,10 +75,11 @@ $C all /data/balance.xlsx                     # plan de cuentas, tasas y valores
 $C treasury /data/balance.xlsx --revalue-until=   # caja y bancos: apertura 31/03/2026 y movimientos (~8 min)
 $C debts /data/balance.xlsx                   # deudas, proveedores y nómina; revaluaciones y reclasificación abril–octubre
 $C sales /data/balance.xlsx                   # exportación, distribución, inventario, ventas, costos y gastos de operación
+$C fiscal /data/balance.xlsx                  # financiamientos dados, impuestos devengados, capital y registro de préstamos
 $C explain                                    # explicaciones automáticas (comprobadas al céntimo)
 $C compare /data/conciliacion.xlsx            # informe de conciliación con el BC
 ```
-Las migraciones de tesorería, deudas y ventas se ejecutan **una sola vez**, en ese orden, sobre una base recién importada.
+Las migraciones de tesorería, deudas, ventas y fiscal se ejecutan **una sola vez**, en ese orden, sobre una base recién importada.
 Al arrancar, la API aplica las migraciones de la base de datos y sincroniza catálogos, roles y mapeos contables.
 
 ## Copias de seguridad

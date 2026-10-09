@@ -37,6 +37,8 @@ export interface PostEntryInput {
   documentId?: string | null;
   reversesId?: string | null;
   createdBy?: string | null;
+  /** Periodo especial: 0 (apertura) o 13 (cierre del ejercicio). Por defecto, el mes de la fecha. */
+  periodMonth?: 0 | 13;
   lines: PostLineInput[];
 }
 
@@ -170,7 +172,7 @@ export async function postEntry(tx: Tx, input: PostEntryInput) {
     });
   }
 
-  const period = await periodFor(tx, input.companyId, date);
+  const period = await periodFor(tx, input.companyId, date, input.periodMonth);
   const seq = await nextNumber(tx, input.companyId, date.getUTCFullYear());
   const number = `${company.code}-${date.getUTCFullYear()}-${String(seq).padStart(6, '0')}`;
 
@@ -209,9 +211,12 @@ export async function reverseEntry(
   }
 
   let entryDate = opts.entryDate;
+  // Un asiento de apertura (0) o de cierre (13) se anula en su mismo periodo especial si sigue abierto.
+  let periodMonth: 0 | 13 | undefined;
   if (!entryDate) {
     if (original.period.status === 'OPEN') {
       entryDate = isoDate(original.entryDate);
+      if (original.period.month === 0 || original.period.month === 13) periodMonth = original.period.month;
     } else {
       const firstOpen = await tx.fiscalPeriod.findFirst({
         where: {
@@ -235,6 +240,7 @@ export async function reverseEntry(
     entryDate,
     book: original.book,
     kind: 'REVERSAL',
+    periodMonth,
     memo: opts.memo ?? `Anulación de ${original.number}: ${original.memo}`,
     reversesId: original.id,
     documentId: original.documentId,

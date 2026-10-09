@@ -24,6 +24,9 @@ export const PERMISSIONS = {
   'parties:manage': 'Contrapartes: alta, cargos, abonos, cesiones y liquidaciones',
   'payroll:manage': 'Registrar nóminas',
   'sales:read': 'Consultar facturas, contenedores, inventario, comisiones y utilidad',
+  'finance:manage': 'Préstamos: alta, devengo de intereses y corto/largo plazo',
+  'capital:manage': 'Aportes, retiros de capital y reparto de utilidades',
+  'year:close': 'Cierre del ejercicio (resultados a utilidades retenidas)',
   // Fases siguientes (se declaran ya para poder asignarlos a roles)
   'cash:operate': 'Operar caja',
   'bank:reconcile': 'Conciliación bancaria y traspasos',
@@ -54,7 +57,8 @@ export const SEED_ROLES: SeedRole[] = [
     permissions: [
       ...READ_ALL, 'accounts:manage', 'fx:manage', 'ledger:post', 'ledger:reverse',
       'ledger:post_soft_closed', 'period:close', 'period:lock', 'audit:read', 'bank:reconcile',
-      'tax:manage', 'parties:manage', 'payroll:manage', 'sales:operate', 'inventory:operate',
+      'tax:manage', 'parties:manage', 'payroll:manage', 'sales:operate', 'inventory:operate', 'finance:manage', 'capital:manage',
+      'year:close',
     ],
   },
   { name: 'Cajero', description: 'Operación de caja', requires2fa: false, permissions: ['fx:read', 'cash:operate'] },

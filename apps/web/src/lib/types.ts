@@ -341,3 +341,20 @@ export interface SalesInvoiceDetail {
 export interface CommissionRow {
   sellerPartyAccountId: string; partyId: string; seller: string; week: string; units: string; salesUsd: string; commissionUsd: string; invoices: string[];
 }
+
+// ───────────────────────── Fase 5: financiamientos, impuestos, capital y cierres ─────────────────────────
+
+export interface LoanRow {
+  id: string; companyCode: string; reference: string; description: string; direction: 'GIVEN' | 'RECEIVED'; status: 'ACTIVE' | 'CLOSED'; migrated: boolean;
+  partyId: string; partyName: string; accountCode: string; startDate: string; endDate: string | null; principalUsd: string; ratePct: string;
+  interestUsd: string; accruedUsd: string; longTermUsd: string; openUsd: string | null;
+}
+export interface TaxMonth { month: number; accruedUsd: string; paidUsd: string; adjustmentUsd: string; balanceUsd: string }
+export interface TaxClosing { id: string; number: string; date: string; periodFrom: string; periodTo: string; declaredUsd: string; accruedUsd: string; adjustmentUsd: string }
+export interface TaxSummary { agency: 'ONAT' | 'HACIENDA'; label: string; closing: 'QUARTERLY' | 'ANNUAL'; months: TaxMonth[]; closings: TaxClosing[] }
+export interface CapitalPartner { partyId: string | null; name: string; capitalUsd: string; retainedUsd: string; sharePct: string | null }
+export interface CapitalMovementRow { id: string; number: string; companyCode: string; date: string; partyId: string; partyName: string; kind: string; amountUsd: string; description: string }
+export interface CloseCheck { key: string; label: string; status: 'OK' | 'PENDING' | 'INFO'; detail: string }
+export interface MonthClose { year: number; month: number; periodStatus: string; checks: CloseCheck[] }
+export interface YearCloseRow { id: string; companyCode: string; year: number; resultUsd: string; entries: number; createdAt: string }
+export const CAPITAL_KIND_LABEL: Record<string, string> = { CONTRIBUTION: 'Aporte', WITHDRAWAL: 'Retiro', DISTRIBUTION: 'Reparto de utilidades' };
