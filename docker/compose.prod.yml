@@ -55,6 +55,8 @@ services:
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sitios de otros proyectos del VPS (ver el final del Caddyfile). Carpeta del servidor.
+      - /opt/caddy-sites:/etc/caddy/sites:ro
       - caddy_data:/data
       - caddy_config:/config
 

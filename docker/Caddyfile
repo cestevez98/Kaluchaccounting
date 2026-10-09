@@ -25,3 +25,8 @@
 www.{$DOMAIN} {
 	redir https://{$DOMAIN}{uri} permanent
 }
+
+# Otros sitios alojados en este VPS (p. ej. Dominicocubano Express). Cada uno deja su bloque en
+# /opt/caddy-sites/<nombre>.caddy en el servidor, fuera de este repositorio, para que las
+# actualizaciones automáticas de Kaluch no lo borren. Si la carpeta está vacía, no hace nada.
+import /etc/caddy/sites/*.caddy
