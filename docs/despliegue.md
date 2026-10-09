@@ -132,3 +132,11 @@ y después el `pg_restore` anterior.
 - Contenedores sin root; PostgreSQL sin puerto público; secretos solo en el servidor (`docker/.env.prod`, permisos 600).
 - Cortafuegos con solo los puertos 22, 80 y 443.
 - Recomendado: en Hostinger → *Seguridad*, añadir tu clave SSH y desactivar el acceso por contraseña de root.
+
+## Otros sitios en el mismo VPS
+
+Caddy también sirve otros proyectos alojados en este servidor, como Dominicocubano Express. Cada uno guarda su bloque en `/opt/caddy-sites/<nombre>.caddy`, en el servidor y fuera de este repositorio, así que las actualizaciones automáticas no lo borran. Caddy los carga con la línea `import` del final del `Caddyfile`. Después de añadir o cambiar uno:
+
+```bash
+docker exec kaluch-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
