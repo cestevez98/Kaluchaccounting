@@ -16,3 +16,4 @@ test-results/
 *.tsbuildinfo
 # Credenciales de rclone (Google Drive) del servidor
 docker/rclone/
+.deployed-commit
