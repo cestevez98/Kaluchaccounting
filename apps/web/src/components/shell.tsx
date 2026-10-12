@@ -163,7 +163,20 @@ export const MODULES: Module[] = [
       { href: '/terceros?role=EMPLOYEE', label: 'Trabajadores', perm: 'parties:read' },
     ] }],
   },
-  { key: 'reportes', icon: '📊', label: 'Reportes', href: '#', phase: 6 },
+  {
+    key: 'reportes', icon: '📊', label: 'Estados financieros', href: '/estados', perm: 'reports:financial',
+    groups: [
+      { label: 'Estados', items: [
+        { href: '/estados?code=ES', label: 'Estado de situación', perm: 'reports:financial' },
+        { href: '/estados?code=ER', label: 'Estado de resultados', perm: 'reports:financial' },
+        { href: '/estados?code=ERE888', label: 'Resultados · Exportación 888', perm: 'reports:financial' },
+        { href: '/estados?code=ERD999', label: 'Resultados · Distribución 999', perm: 'reports:financial' },
+        { href: '/estados?code=ERDOP777', label: 'Resultados · Doping 777', perm: 'reports:financial' },
+        { href: '/estados?code=EFE', label: 'Flujo de efectivo', perm: 'reports:financial' },
+      ] },
+      { label: 'Configuración', items: [{ href: '/estados/disenador', label: 'Diseñador de plantillas', perm: 'reports:financial' }] },
+    ],
+  },
   {
     key: 'configuracion', icon: '⚙️', label: 'Configuración', href: '/tasas',
     groups: [

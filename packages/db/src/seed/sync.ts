@@ -5,6 +5,7 @@
 import { PrismaClient } from '@prisma/client';
 import { ensureSystemAccounts } from '../system-accounts';
 import { seedCatalogs } from './catalogs';
+import { ensureDefaultStatements } from './statements';
 
 async function main() {
   const prisma = new PrismaClient();
@@ -13,6 +14,10 @@ async function main() {
     if (await prisma.account.findFirst({ where: { code: '699', subcode: null } })) {
       const { missing } = await ensureSystemAccounts(prisma);
       if (missing.length) console.log(`Mapeos sin cuenta en el plan: ${missing.join(', ')}`);
+    }
+    if (await prisma.account.count()) {
+      const { created } = await ensureDefaultStatements(prisma);
+      if (created) console.log(`Plantillas de estados financieros predeterminadas: ${created}`);
     }
     console.log('Catálogos y mapeos sincronizados.');
   } finally {

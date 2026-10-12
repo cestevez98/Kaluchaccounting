@@ -5,14 +5,15 @@ ERP financiero-operativo para Grupo Kaluch. Sustituye el libro Excel
 basada en un libro diario de partida doble, multi-empresa, multi-moneda y
 multi-segmento.
 
-**Estado:** Fase 5 completada (09/10/2026): préstamos con devengo de intereses y corto/largo plazo,
-impuestos ONAT y Hacienda (devengo, pagos y cierres), capital por socio, cierre de mes y de ejercicio, y la
-migración de todo el BC del Excel: **todas las cuentas cuadran o tienen su diferencia explicada** de abril a
-octubre. Antes: fase 4 (exportación, distribución, inventario), fase 3 (contrapartes, nómina) y fase 2
-(tesorería, despliegue).
+**Estado:** Fase 6 completada (12/10/2026): estados financieros (ES, ER consolidado y por segmento 888 / 999 /
+777, EFE por método directo) con diseñador de plantillas, vistas Real y Fiscal, consolidación con eliminación
+intercompañía, alertas y panel de dirección. Las plantillas se importan de las hojas del Excel y **cada línea
+de cada mes cuadra con el Excel o tiene su diferencia explicada**. Antes: fase 5 (préstamos, impuestos, capital,
+cierres y conciliación de todo el BC), fase 4 (exportación, distribución, inventario), fase 3 (contrapartes,
+nómina) y fase 2 (tesorería, despliegue).
 Resúmenes: [fase 1](docs/fases/fase-1.md) · [fase 2](docs/fases/fase-2.md) · [fase 3](docs/fases/fase-3.md) ·
-[fase 4](docs/fases/fase-4.md) · [fase 5](docs/fases/fase-5.md) · [despliegue](docs/despliegue.md). Siguiente:
-fase 6 (estados financieros y dashboard).
+[fase 4](docs/fases/fase-4.md) · [fase 5](docs/fases/fase-5.md) · [fase 6](docs/fases/fase-6.md) ·
+[despliegue](docs/despliegue.md). Siguiente: fase 7 (cierre de la migración y arranque).
 
 ## Puesta en marcha (desarrollo)
 
@@ -65,4 +66,5 @@ Tests: `pnpm test` (unitarios + integración con PostgreSQL real) y `pnpm e2e` (
 | [Fase 3](docs/fases/fase-3.md) | Contrapartes, CxC/CxP, nómina, migración de deudas guiada por las fórmulas del BC |
 | [Fase 4](docs/fases/fase-4.md) | Exportación, contenedores, inventario, ventas de distribución, inversionistas, gastos de operación y totales de control |
 | [Fase 5](docs/fases/fase-5.md) | Préstamos, impuestos, capital por socio, cierres de mes y de ejercicio; conciliación de todo el BC |
+| [Fase 6](docs/fases/fase-6.md) | Estados financieros desde plantillas del Excel, diseñador, EFE directo, consolidación, alertas y panel de dirección |
 | [Despliegue](docs/despliegue.md) | Instalación en el VPS, actualización, carga de datos y copias de seguridad |

@@ -60,7 +60,9 @@ minutos: plan de cuentas, tasas, caja y bancos, deudas, proveedores y nómina, e
 y conciliación. La pantalla muestra el avance y el registro, y el archivo se borra del servidor al terminar.
 La migración completa solo se puede hacer una vez, sobre una base vacía; después, la misma pantalla sirve
 para actualizar las tasas. En una base migrada con una versión anterior, el modo *"Añadir lo que falta
-por migrar"* ejecuta solo las fases que falten (unos 5 minutos).
+por migrar"* ejecuta solo las fases que falten (unos 5 minutos). El modo *"Solo las plantillas de los
+estados financieros"* actualiza las plantillas ES/ER/EFE y las cifras del Excel con las que se comparan, sin
+tocar la contabilidad (unos 20 segundos).
 
 **Por consola** (alternativa):
 

@@ -12,6 +12,7 @@ import { seedDemoProducts, seedDemoSales } from './sales-demo';
 import { seedDemoFinance, seedDemoPartners } from './finance-demo';
 import { upsertAccounts } from './accounts';
 import { DEMO_ACCOUNTS } from './accounts-demo';
+import { ensureDefaultStatements } from './statements';
 import { seedCatalogs, seedPeriods } from './catalogs';
 import { ensureUser } from './users';
 
@@ -43,6 +44,7 @@ export async function seedDemo(prisma: PrismaClient, opts: { entries?: boolean }
   await seedDemoParties(prisma);
   await seedDemoProducts(prisma);
   await seedDemoPartners(prisma);
+  await ensureDefaultStatements(prisma);
 
   // Tasas 01/01/2026 – 31/10/2026.
   const series: [string, string, string, number, number][] = [

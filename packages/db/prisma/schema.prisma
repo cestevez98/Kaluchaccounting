@@ -1266,3 +1266,109 @@ model YearClose {
   @@unique([companyId, year])
   @@map("year_close")
 }
+
+// ───────────────────────── Estados financieros (fase 6) ─────────────────────────
+
+enum ReportKind {
+  /// Estado de situación: saldos a fin de mes.
+  BALANCE
+  /// Estado de resultados: movimiento del mes.
+  INCOME
+  /// Flujo de efectivo (método directo) desde los movimientos de caja y bancos.
+  CASHFLOW
+}
+
+enum ReportLineSource {
+  /// Título o línea en blanco: sin importe.
+  NONE
+  /// Suma de cuentas (una cuenta de grupo incluye sus subcuentas), con el signo del Excel.
+  ACCOUNTS
+  /// Expresión sobre otras líneas: [clave], números, + − * /, paréntesis, MIN, MAX, ABS.
+  FORMULA
+  /// Resultado del ejercicio hasta el mes (ingresos − gastos).
+  RESULT_YTD
+  /// Resultado de ejercicios anteriores aún no cerrados.
+  RESULT_PRIOR
+  /// Cuentas con saldo que no están en ninguna línea (por clasificación: AC, PC, CC…).
+  UNMAPPED
+  /// Flujo de caja de unas categorías de tesorería (o el resto de una actividad).
+  CASH
+  /// Saldo de caja y bancos al inicio o al cierre del mes.
+  CASH_BALANCE
+  /// Variación del contravalor en USD de la caja por revaluación y cambios entre cuentas propias.
+  CASH_FX
+}
+
+/// Plantilla de un estado financiero: líneas ↔ cuentas, como las hojas ES, ER, ERE 888… del Excel.
+model ReportTemplate {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  code          String     @unique
+  name          String
+  kind          ReportKind
+  /// Texto para el pie del informe (de dónde sale cada cifra).
+  notes         String     @default("")
+  /// EXCEL = importada de la hoja del Excel; SISTEMA = definida en el sistema.
+  origin        String     @default("SISTEMA")
+  sheetName     String?    @map("sheet_name")
+  sortOrder     Int        @default(0) @map("sort_order")
+  /// Avisa de las cuentas con saldo que no están en ninguna línea (estados completos: ES, ER consolidado).
+  checkCoverage Boolean    @default(false) @map("check_coverage")
+  active        Boolean    @default(true)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  lines      ReportLine[]
+  references ReportReference[]
+
+  @@map("report_template")
+}
+
+model ReportLine {
+  id         String           @id @default(uuid(7)) @db.Uuid
+  templateId String           @map("template_id") @db.Uuid
+  template   ReportTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sortOrder  Int              @map("sort_order")
+  /// Clave de la línea dentro de la plantilla (las fórmulas la citan como [clave]).
+  key        String
+  label      String
+  source     ReportLineSource @default(NONE)
+  /// Códigos de cuenta (displayCode) para ACCOUNTS; clasificaciones para UNMAPPED.
+  accounts   String[]         @default([])
+  /// Categorías de tesorería (código, nombre o alias) para CASH; actividad OPER/INV/FIN en cashFlow.
+  categories String[]         @default([])
+  cashFlow   String?          @map("cash_flow")
+  formula    String?
+  /// Cambia el signo al presentar (p. ej. para ver un gasto en positivo).
+  negate     Boolean          @default(false)
+  indent     Int              @default(0)
+  bold       Boolean          @default(false)
+  /// CASH_BALANCE: OPENING o CLOSING. RESULT_YTD: REALIZADO (sin exportación pendiente de cierre), PENDIENTE o vacío (todo).
+  option     String?
+  excelRow   Int?             @map("excel_row")
+
+  @@unique([templateId, key])
+  @@index([templateId, sortOrder])
+  @@map("report_line")
+}
+
+/// Cifras del Excel por línea y mes (para comparar los estados del sistema con los del Excel).
+model ReportReference {
+  id         String         @id @default(uuid(7)) @db.Uuid
+  templateId String         @map("template_id") @db.Uuid
+  template   ReportTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  lineKey    String         @map("line_key")
+  year       Int
+  month      Int
+  /// null cuando la celda del Excel es un error (#REF!…) o está vacía.
+  valueUsd   Decimal?       @map("value_usd") @db.Decimal(18, 4)
+  /// Texto del error del Excel, si lo hay.
+  error      String?
+  /// La comprobación del propio Excel (columna "2" = la línea cuadra con el BC).
+  excelCheck Boolean?       @map("excel_check")
+  /// Importe escrito a mano en el Excel (la celda no tiene fórmula).
+  manual     Boolean        @default(false)
+  importId   String?        @map("import_id") @db.Uuid
+
+  @@unique([templateId, lineKey, year, month])
+  @@map("report_reference")
+}

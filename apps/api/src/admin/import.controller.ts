@@ -18,7 +18,7 @@ type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 interface Step { key: string; label: string; args: string[]; status: StepStatus; startedAt: string | null; finishedAt: string | null }
 interface ImportJob {
   status: 'running' | 'done' | 'error';
-  mode: 'full' | 'sales' | 'rates';
+  mode: 'full' | 'sales' | 'rates' | 'statements';
   fileName: string;
   startedBy: string;
   startedAt: string;
@@ -32,6 +32,9 @@ interface ImportJob {
 let job: ImportJob | null = null;
 
 const MAX_LOG = 400;
+const stmtStep = {
+  key: 'statements', label: 'Estados financieros: plantillas ES, ER, ERE 888, ERD 999, ERDop 777 y EFE, y sus cifras', args: (f: string) => ['statements', f],
+};
 const STEPS: Record<ImportJob['mode'], { key: string; label: string; args: (file: string) => string[] }[]> = {
   full: [
     { key: 'all', label: 'Plan de cuentas, tasas y valores del BC', args: (f) => ['all', f] },
@@ -41,6 +44,7 @@ const STEPS: Record<ImportJob['mode'], { key: string; label: string; args: (file
     { key: 'fiscal', label: 'Financiamientos, impuestos devengados y capital', args: (f) => ['fiscal', f] },
     { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
     { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
+    stmtStep,
   ],
   // Fases nuevas sobre una base ya migrada: actualiza el plan de cuentas y los valores del BC y migra lo que falte
   // (los pasos de las fases ya migradas se quitan al lanzar).
@@ -50,8 +54,11 @@ const STEPS: Record<ImportJob['mode'], { key: string; label: string; args: (file
     { key: 'fiscal', label: 'Financiamientos, impuestos devengados y capital', args: (f) => ['fiscal', f] },
     { key: 'explain', label: 'Explicaciones automáticas de diferencias', args: () => ['explain'] },
     { key: 'compare', label: 'Conciliación con el BC del Excel', args: () => ['compare'] },
+    stmtStep,
   ],
   rates: [{ key: 'rates', label: 'Actualizar tasas de cambio', args: (f) => ['rates', f, '--overwrite'] }],
+  // Solo las plantillas de los estados y sus cifras (no toca la contabilidad).
+  statements: [stmtStep],
 };
 
 function cliPath() {
@@ -121,16 +128,17 @@ export class ImportController {
   @Get()
   @RequirePermission('admin:settings')
   async state() {
-    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch, debts, sales, fiscal] = await Promise.all([
+    const [accounts, rates, treasuryMovements, partyDocuments, lastBatch, debts, sales, fiscal, statements] = await Promise.all([
       this.prisma.account.count(), this.prisma.exchangeRate.count(), this.prisma.treasuryMovement.count(),
       this.prisma.partyDocument.count(), this.prisma.importBatch.findFirst({ orderBy: { createdAt: 'desc' } }),
       this.prisma.importBatch.count({ where: { tableName: 'Deudas' } }), this.prisma.importBatch.count({ where: { tableName: 'Ventas' } }),
       this.prisma.importBatch.count({ where: { tableName: 'Fiscal y capital' } }),
+      this.prisma.importBatch.count({ where: { tableName: 'Estados:plantillas' } }),
     ]);
     return {
       // Sin los argumentos internos (ruta del archivo temporal).
       job: job ? { ...job, steps: job.steps.map(({ args: _args, ...s }) => s) } : null,
-      data: { accounts, rates, treasuryMovements, partyDocuments, phases: { debts: debts > 0, sales: sales > 0, fiscal: fiscal > 0 }, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
+      data: { accounts, rates, treasuryMovements, partyDocuments, phases: { debts: debts > 0, sales: sales > 0, fiscal: fiscal > 0, statements: statements > 0 }, lastImport: lastBatch ? { at: lastBatch.createdAt, file: lastBatch.sourceFile, table: lastBatch.tableName } : null },
     };
   }
 
@@ -143,7 +151,7 @@ export class ImportController {
   @RequirePermission('admin:settings')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 60 * 1024 * 1024 } }))
   async start(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @Body() body: unknown) {
-    const b = parse(z.object({ mode: z.enum(['full', 'sales', 'rates']).default('full') }), body);
+    const b = parse(z.object({ mode: z.enum(['full', 'sales', 'rates', 'statements']).default('full') }), body);
     if (job?.status === 'running') throw new ConflictException({ code: 'IMPORT_RUNNING', message: 'Ya hay una importación en curso' });
     if (!file) throw new BadRequestException({ code: 'VALIDATION', message: 'Adjunta el archivo Excel (.xlsx)' });
     if (!/\.xlsx$/i.test(file.originalname) || file.buffer.subarray(0, 2).toString('latin1') !== 'PK') {
@@ -160,10 +168,15 @@ export class ImportController {
     }
     const skip = new Set<string>();
     if (b.mode === 'sales') {
-      const [debts, sales, fiscal] = await Promise.all(['Deudas', 'Ventas', 'Fiscal y capital'].map((tableName) => this.prisma.importBatch.findFirst({ where: { tableName } })));
+      const [debts, sales, fiscal, statements] = await Promise.all(
+        ['Deudas', 'Ventas', 'Fiscal y capital', 'Estados:plantillas'].map((tableName) => this.prisma.importBatch.findFirst({ where: { tableName } })),
+      );
       if (!debts) throw new ConflictException({ code: 'PHASE_MISSING', message: 'Primero hay que migrar tesorería y deudas (migración completa)' });
-      if (sales && fiscal) throw new ConflictException({ code: 'ALREADY_IMPORTED', message: 'Esta base ya tiene migradas todas las fases' });
+      if (sales && fiscal && statements) throw new ConflictException({ code: 'ALREADY_IMPORTED', message: 'Esta base ya tiene migradas todas las fases' });
       if (sales) skip.add('sales');
+      if (fiscal) skip.add('fiscal');
+      // Si solo faltan los estados, no hace falta recalcular la conciliación del BC.
+      if (sales && fiscal) ['all', 'explain', 'compare'].forEach((k) => skip.add(k));
     }
     // El nombre original queda en el historial de importaciones (sin caracteres raros).
     const safe = file.originalname.normalize('NFD').replace(/[^\w.-]+/g, '_').slice(-80);

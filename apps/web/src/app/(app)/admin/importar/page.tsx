@@ -6,13 +6,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, PageHeader, Spinner } from '@/components/ui';
 import { api, ApiError, useApi } from '@/lib/api';
 
-type Mode = 'full' | 'sales' | 'rates';
-const MODE_LABEL: Record<Mode, string> = { full: 'migración completa', sales: 'fases nuevas', rates: 'tasas' };
+type Mode = 'full' | 'sales' | 'rates' | 'statements';
+const MODE_LABEL: Record<Mode, string> = { full: 'migración completa', sales: 'fases nuevas', rates: 'tasas', statements: 'estados financieros' };
 
 interface Step { key: string; label: string; status: 'pending' | 'running' | 'done' | 'error' | 'skipped'; startedAt: string | null; finishedAt: string | null }
 interface ImportState {
   job: { status: 'running' | 'done' | 'error'; mode: Mode; fileName: string; startedBy: string; startedAt: string; finishedAt: string | null; steps: Step[]; log: string[]; error: string | null } | null;
-  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; phases: { debts: boolean; sales: boolean; fiscal: boolean }; lastImport: { at: string; file: string; table: string } | null };
+  data: { accounts: number; rates: number; treasuryMovements: number; partyDocuments: number; phases: { debts: boolean; sales: boolean; fiscal: boolean; statements: boolean }; lastImport: { at: string; file: string; table: string } | null };
 }
 
 const STEP_TONE: Record<Step['status'], { label: string; tone: 'gray' | 'green' | 'amber' | 'red' | 'blue' }> = {
@@ -34,10 +34,10 @@ export default function ImportPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const running = data?.job?.status === 'running';
   const migrated = (data?.data.treasuryMovements ?? 0) > 0 || (data?.data.partyDocuments ?? 0) > 0;
-  const salesPending = !!data?.data.phases.debts && (!data.data.phases.sales || !data.data.phases.fiscal);
+  const salesPending = !!data?.data.phases.debts && (!data.data.phases.sales || !data.data.phases.fiscal || !data.data.phases.statements);
   // Por defecto: lo que falta por migrar.
   const current: Mode = mode ?? (!migrated ? 'full' : salesPending ? 'sales' : 'rates');
-  const needsConfirm = current !== 'rates';
+  const needsConfirm = current !== 'rates' && current !== 'statements';
 
   useEffect(() => {
     if (!running) return;
@@ -93,8 +93,9 @@ export default function ImportPage() {
                 <label className="label" htmlFor="mode">Qué importar</label>
                 <select id="mode" className="input" value={current} onChange={(e) => setMode(e.target.value as Mode)}>
                   <option value="full">Migración completa (una sola vez, sobre una base vacía)</option>
-                  <option value="sales">Añadir lo que falta por migrar (exportación y distribución, financiamientos, impuestos y capital)</option>
+                  <option value="sales">Añadir lo que falta por migrar (exportación y distribución, financiamientos, impuestos y capital, estados financieros)</option>
                   <option value="rates">Solo actualizar las tasas de cambio</option>
+                  <option value="statements">Solo las plantillas de los estados financieros y sus cifras del Excel</option>
                 </select>
               </div>
               {current === 'full' && migrated && (
@@ -118,7 +119,7 @@ export default function ImportPage() {
                 </label>
               )}
               <button className="btn-primary" disabled={busy || !file || (needsConfirm && !confirm) || (current === 'full' && migrated) || (current === 'sales' && !salesPending)}>
-                {busy ? 'Subiendo…' : current === 'rates' ? 'Subir y actualizar tasas' : 'Subir e importar'}
+                {busy ? 'Subiendo…' : current === 'rates' ? 'Subir y actualizar tasas' : current === 'statements' ? 'Subir y actualizar los estados' : 'Subir e importar'}
               </button>
             </form>
           )}
@@ -140,7 +141,13 @@ export default function ImportPage() {
               </table>
               {data.job.error && <div className="p-3"><Alert>{data.job.error}</Alert></div>}
               {data.job.status === 'done' && data.job.mode !== 'rates' && (
-                <div className="p-3"><Alert kind="success">Migración terminada. Revisa el resultado en <Link className="underline" href="/conciliacion-bc">Conciliación con el Excel</Link>.</Alert></div>
+                <div className="p-3">
+                  <Alert kind="success">
+                    {data.job.mode === 'statements' ? 'Estados actualizados.' : 'Migración terminada.'} Revisa el resultado en{' '}
+                    {data.job.mode !== 'statements' && <><Link className="underline" href="/conciliacion-bc">Conciliación con el Excel</Link> y en </>}
+                    <Link className="underline" href="/estados?code=ES">Estados financieros</Link> (con la comparación línea a línea con el Excel).
+                  </Alert>
+                </div>
               )}
               <pre aria-label="Registro" className="max-h-96 overflow-auto bg-ink px-4 py-3 text-[11px] leading-relaxed text-white/85">{data.job.log.join('\n') || '…'}</pre>
             </div>

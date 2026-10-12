@@ -95,7 +95,7 @@ Resumen: [fases/fase-3.md](fases/fase-3.md).
   `Impuestos_Diferencia`, `Capital`.
 - **Aceptación:** todas las cuentas del BC conciliadas o con diferencia explicada.
 
-## Fase 6 · Estados financieros y dashboard
+## Fase 6 · Estados financieros y dashboard ✅
 - Diseñador de estructuras de reporte (líneas ↔ cuentas/segmentos), con las
   plantillas ES, ER, ERDop 777, ERE 888, ERD 999 y EFE replicando la estructura
   actual.

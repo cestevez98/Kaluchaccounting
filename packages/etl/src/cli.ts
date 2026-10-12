@@ -13,6 +13,8 @@
  *   sales     Exportación y distribución (tras debts): ventas, costos, inventario, CxC de clientes e inversionistas
  *   fiscal    Financiamientos dados, impuestos devengados y capital (tras sales)
  *   explain   Explica (y comprueba al céntimo) las diferencias conocidas de tenencia con el BC  [--from] [--to]
+ *   statements Plantillas de los estados financieros (ES, ER, ERE 888, ERD 999, ERDop 777, EFE) y sus cifras
+ *   statements-check  Compara los estados del sistema con los del Excel  [--from=4] [--to=10] [--year=2026] [--verbose]
  *   compare   Conciliación con el BC  [--from=2026-04] [--to=2026-10] [--codes=101,109,...] [--out=data/conciliacion.xlsx]
  * El Excel nunca se sube al repositorio: colócalo en data/ (ignorado por git).
  */
@@ -23,6 +25,8 @@ import { importTreasury } from './treasury-import';
 import { importDebts, importFiscal, importSales } from './debts-import';
 import { explainHeaderInconsistencies, explainHoldingDifferences, explainStateAccounts } from './explain';
 import { loadWorkbook } from './workbook';
+import { importStatements } from './statements-import';
+import { checkStatements } from './statements-check';
 
 /** Cuentas conciliadas por defecto: tesorería (fase 2) y deudas, proveedores y nómina (fase 3). */
 const DEFAULT_COMPARE_CODES = '101,109,110,111,112,113,114,135,136,137,138,139,146,180,181,1181,405,406,407,408,409,410,411,412,413,430,455,480,520,600,630,699,800,814,815,816,817,818,819,820,821,822,823,824,825,826,827,828,829,830,831,832,833,834,835,836,837,838,839,840,841,842,843,844,845,846,847,848,849,900,901,920,921,924,925,926,930,1900,1814,1815,1816,1817,2900,2814,2815,2816';
@@ -47,6 +51,19 @@ async function main() {
     }
     return;
   }
+  if (cmd === 'statements-check') {
+    const prisma = new PrismaClient();
+    try {
+      const ok = await checkStatements(prisma, {
+        year: Number(opt('year', '2026')), from: Number(opt('from', '4')), to: Number(opt('to', '10')),
+        verbose: flags.includes('--verbose'), today: opt('today', ''),
+      });
+      if (!ok) process.exitCode = 1;
+    } finally {
+      await prisma.$disconnect();
+    }
+    return;
+  }
   if (cmd === 'compare') {
     const prisma = new PrismaClient();
     try {
@@ -60,8 +77,8 @@ async function main() {
     }
     return;
   }
-  if (!cmd || !file || !['coa', 'rates', 'bc-ref', 'all', 'treasury', 'debts', 'sales', 'fiscal'].includes(cmd)) {
-    console.error('Uso: pnpm etl <coa|rates|bc-ref|all|treasury|debts|sales|fiscal> <ruta.xlsx> [opciones] · pnpm etl compare [salida.xlsx] [opciones]');
+  if (!cmd || !file || !['coa', 'rates', 'bc-ref', 'all', 'treasury', 'debts', 'sales', 'fiscal', 'statements'].includes(cmd)) {
+    console.error('Uso: pnpm etl <coa|rates|bc-ref|all|treasury|debts|sales|fiscal|statements> <ruta.xlsx> [opciones] · pnpm etl compare [salida.xlsx] [opciones]');
     process.exit(2);
   }
   const t0 = Date.now();
@@ -108,6 +125,12 @@ async function main() {
       });
       console.log(`\n${cmd === 'sales' ? 'Ventas' : cmd === 'fiscal' ? 'Fiscal y capital' : 'Deudas'} (${((Date.now() - t0) / 1000).toFixed(0)} s):`, r.stats);
       if (r.issues.length) console.log(`Avisos (${r.issues.length}):\n  - ${r.issues.slice(0, 80).join('\n  - ')}`);
+    }
+    if (cmd === 'statements') {
+      for (const t of await importStatements(prisma, w, file)) {
+        console.log(`\n${t.code}: ${t.lines} líneas, ${t.references} cifras del Excel${t.kept ? ' (plantilla modificada en el sistema: se conservan sus líneas)' : ''}`);
+        for (const n of t.notes) console.log(`  - ${n}`);
+      }
     }
     if (cmd === 'bc-ref' || cmd === 'all') {
       const r = await importBcReference(prisma, w, file);

@@ -17,3 +17,6 @@ export * from './bank';
 export * from './parties';
 export * from './sales';
 export * from './finance';
+export * from './statements';
+export * from './dashboard';
+export { ensureDefaultStatements, DEFAULT_TEMPLATE_ORIGIN } from './seed/statements';
