@@ -55,7 +55,7 @@ flowchart LR
 | Tablas | **TanStack Table** con paginación, filtro y orden **en servidor** | Para la vista tipo Excel del libro diario y la conciliación, AG Grid Community si hace falta edición masiva. |
 | Formularios | react-hook-form + Zod | |
 | Exportación | **ExcelJS** (xlsx con formatos y fórmulas de total) y **Playwright → PDF** (HTML imprimible) | El PDF sale de la misma plantilla HTML que ves en pantalla. |
-| Auth | Sesión con **JWT de acceso corto + refresh en cookie httpOnly**, contraseñas Argon2id, **2FA TOTP** obligatorio para Admin y Contador | Alternativa: Auth.js o Keycloak si más adelante queréis SSO. |
+| Auth | Sesión con **JWT de acceso corto + refresh en cookie httpOnly**, contraseñas Argon2id, **2FA TOTP** opcional por usuario (desde el 12/10/2026 ningún rol la exige) | Alternativa: Auth.js o Keycloak si más adelante queréis SSO. |
 | Permisos | **CASL** (rol × acción × empresa) + **RLS de PostgreSQL** como segunda barrera por `company_id` | Aunque haya un bug en la API, un usuario de KEI no puede leer DM. |
 | Tests | **Vitest** (unitarios y de integración con Postgres real vía Testcontainers) + **Playwright** (E2E) | Las reglas contables se prueban contra una base real, no contra mocks. |
 | Calidad | ESLint, Prettier, `tsc --noEmit`, Husky + lint-staged | |

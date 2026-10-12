@@ -106,4 +106,12 @@ export class AuthController {
     await this.prisma.appUser.update({ where: { id: user.id }, data: { totpEnabled: true } });
     return { ok: true };
   }
+
+  /** Desactiva la verificación en dos pasos del propio usuario (es voluntaria). */
+  @Post('totp/disable')
+  @HttpCode(200)
+  async totpDisable(@CurrentUser() user: AuthUser) {
+    await this.prisma.appUser.update({ where: { id: user.id }, data: { totpEnabled: false, totpSecret: null } });
+    return { ok: true };
+  }
 }

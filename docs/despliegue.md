@@ -36,7 +36,7 @@ El cortafuegos (ufw) solo admite SSH, HTTP y HTTPS.
 4. Vuelve a ejecutar el mismo comando. Clona el código, genera secretos aleatorios en
    `docker/.env.prod` (no salen del servidor), construye las imágenes, arranca todo y crea el usuario
    Superadministrador inicial. **La contraseña inicial se muestra una sola vez**: cámbiala y guárdala.
-5. Abre https://kgtaccounting.com. El primer acceso pide activar la verificación en dos pasos (2FA).
+5. Abre https://kgtaccounting.com.
 
 ## Actualizar a una versión nueva
 
@@ -128,7 +128,7 @@ y después el `pg_restore` anterior.
 ## Seguridad aplicada
 
 - HTTPS obligatorio con HSTS y cabeceras de seguridad (Caddy).
-- 2FA obligatorio para Superadministrador y Contador (`AUTH_ENFORCE_2FA=true`).
+- 2FA opcional: cada usuario la activa o desactiva en *Mi seguridad*. Ningún rol la exige (decisión del 12/10/2026); si un rol vuelve a marcarse "exige 2FA" en `SEED_ROLES`, `AUTH_ENFORCE_2FA=true` la hace obligatoria.
 - Contenedores sin root; PostgreSQL sin puerto público; secretos solo en el servidor (`docker/.env.prod`, permisos 600).
 - Cortafuegos con solo los puertos 22, 80 y 443.
 - Recomendado: en Hostinger → *Seguridad*, añadir tu clave SSH y desactivar el acceso por contraseña de root.

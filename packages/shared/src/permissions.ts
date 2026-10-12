@@ -49,11 +49,11 @@ const READ_ALL: Permission[] = [
 ];
 
 export const SEED_ROLES: SeedRole[] = [
-  { name: 'Superadministrador', description: 'Acceso total', requires2fa: true, permissions: ['*'] },
+  { name: 'Superadministrador', description: 'Acceso total', requires2fa: false, permissions: ['*'] },
   {
     name: 'Contador',
     description: 'Plan de cuentas, asientos, cierres y reportes',
-    requires2fa: true,
+    requires2fa: false,
     permissions: [
       ...READ_ALL, 'accounts:manage', 'fx:manage', 'ledger:post', 'ledger:reverse',
       'ledger:post_soft_closed', 'period:close', 'period:lock', 'audit:read', 'bank:reconcile',

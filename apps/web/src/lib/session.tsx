@@ -27,13 +27,15 @@ interface SessionCtx {
   companyId: string | null;
   setCompanyId: (id: string | null) => void;
   can: (permission: string, companyId?: string | null) => boolean;
+  /** Vuelve a leer /auth/me (tras cambiar la seguridad de la cuenta). */
+  refresh: () => Promise<void>;
 }
 
 const Ctx = createContext<SessionCtx | null>(null);
 const STORAGE_KEY = 'kaluch.company';
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const { data: me } = useApi<Me>('/auth/me');
+  const { data: me, reload } = useApi<Me>('/auth/me');
   const [companyId, setCompanyIdState] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +55,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       me,
       companyId,
+      refresh: async () => {
+        await reload();
+      },
       setCompanyId: (id) => {
         setCompanyIdState(id);
         try {
@@ -68,7 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return list.some((c) => c.permissions.includes('*') || c.permissions.includes(permission));
       },
     }),
-    [me, companyId],
+    [me, companyId, reload],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

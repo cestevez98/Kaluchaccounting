@@ -128,6 +128,7 @@ describe('administración de usuarios y 2FA obligatorio', () => {
 
   it('con AUTH_ENFORCE_2FA, un rol que exige 2FA solo accede a /auth hasta activarlo', async () => {
     process.env.AUTH_ENFORCE_2FA = 'true';
+    await prisma.role.update({ where: { name: 'Contador' }, data: { requires2fa: true } });
     try {
       const c = await login('contador@kaluch.local');
       const blocked = await request(app.getHttpServer()).get('/api/v1/accounts').set('Cookie', c);
@@ -139,6 +140,7 @@ describe('administración de usuarios y 2FA obligatorio', () => {
       expect(ok.status).toBe(200);
     } finally {
       delete process.env.AUTH_ENFORCE_2FA;
+      await prisma.role.update({ where: { name: 'Contador' }, data: { requires2fa: false } });
       await prisma.appUser.update({ where: { email: 'contador@kaluch.local' }, data: { totpEnabled: false, totpSecret: null } });
     }
   });

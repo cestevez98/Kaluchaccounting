@@ -6,7 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
 
 export default function SecurityPage() {
-  const { me } = useSession();
+  const { me, refresh } = useSession();
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
@@ -17,6 +17,7 @@ export default function SecurityPage() {
       await api('/auth/totp/enable', { method: 'POST', json: { code } });
       setMsg({ kind: 'success', text: 'Verificación en dos pasos activada. La próxima vez se te pedirá el código.' });
       setSetup(null);
+      await refresh();
     } catch (err) {
       setMsg({ kind: 'error', text: err instanceof ApiError ? err.message : 'Error' });
     }
@@ -24,10 +25,22 @@ export default function SecurityPage() {
 
   return (
     <div className="max-w-xl">
-      <PageHeader title="Seguridad" subtitle="Verificación en dos pasos (TOTP) con Google Authenticator, Microsoft Authenticator, 1Password…" />
+      <PageHeader title="Seguridad" subtitle="Verificación en dos pasos opcional (TOTP) con Google Authenticator, Microsoft Authenticator, 1Password…" />
       {msg && <div className="mb-3"><Alert kind={msg.kind}>{msg.text}</Alert></div>}
       {me?.totpEnabled && !setup ? (
-        <Alert kind="success">La verificación en dos pasos está activada.</Alert>
+        <div className="space-y-3">
+          <Alert kind="success">La verificación en dos pasos está activada.</Alert>
+          <button
+            className="btn-secondary"
+            onClick={async () => {
+              await api('/auth/totp/disable', { method: 'POST' });
+              setMsg({ kind: 'success', text: 'Verificación en dos pasos desactivada. Al entrar solo se pedirá la contraseña.' });
+              await refresh();
+            }}
+          >
+            Desactivar verificación en dos pasos
+          </button>
+        </div>
       ) : !setup ? (
         <button className="btn-primary" onClick={async () => setSetup(await api('/auth/totp/setup', { method: 'POST' }))}>
           Configurar verificación en dos pasos

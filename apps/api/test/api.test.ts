@@ -68,7 +68,9 @@ describe('autenticación', () => {
       .post('/api/v1/auth/login').send({ email: 'contador@kaluch.local', password: DEMO_PASSWORD, totp: authenticator.generate(setup.body.secret) });
     expect(step2.status).toBe(200);
     expect(step2.body.ok).toBe(true);
-    await prisma.appUser.update({ where: { email: 'contador@kaluch.local' }, data: { totpEnabled: false } });
+    await request(app.getHttpServer()).post('/api/v1/auth/totp/disable').set('Cookie', cookie).expect(200);
+    const again = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'contador@kaluch.local', password: DEMO_PASSWORD });
+    expect(again.body.ok).toBe(true);
   });
 });
 
